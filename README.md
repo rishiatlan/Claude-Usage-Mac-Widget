@@ -13,6 +13,8 @@ A floating macOS desktop widget that shows your Claude API usage at a glance. Al
 - **Draggable** — click and drag to reposition anywhere on screen
 - **Remembers position** — reopens exactly where you left it
 - **Near-realtime** — auto-refreshes every 30 seconds
+- **Plain-English status** — shows "Plenty of room", "On pace — be mindful", "Almost out — slow down", etc.
+- **Session expiry detection** — widget turns red and tells you to re-extract your session key when it expires
 
 ## Understanding Your Usage
 
@@ -51,6 +53,17 @@ The widget doesn't just show raw usage — it compares your actual usage to wher
 | 🔴 Red | **Exceeding** — more than 5% above expected pace | 2h into a 5h window, and you're at 60% usage — slow down |
 
 The **"pace"** line on the widget (e.g., `pace: 40%`) shows the expected usage for the current point in time. If your actual % is well below pace, you're in good shape.
+
+The widget also shows a **plain-English status message** so you don't have to interpret the numbers yourself:
+
+| Message | What it means |
+|---------|--------------|
+| Plenty of room | Under 30% and on track — chat away |
+| On track — you're good | On track, above 30% |
+| On pace — be mindful | Usage is roughly where expected |
+| Above pace — slow down | You're burning through faster than expected |
+| Almost out — slow down | Above 90% and exceeding pace |
+| Limit reached — wait for reset | 100% — you're rate-limited until the window resets |
 
 ### Practical Tips
 
@@ -152,7 +165,7 @@ Single-file Swift app (`ClaudeUsageApp.swift`) — no Xcode project, no dependen
 
 Key components:
 - `FloatingWidgetPanel` — borderless `NSPanel` subclass (always-on-top, all Spaces, draggable)
-- `WidgetView` — SwiftUI view with three states: setup, loading, data display
+- `WidgetView` — SwiftUI view with four states: setup, session expired, loading, data display
 - `WidgetPanelController` — lifecycle manager with position/visibility persistence
 - `AppDelegate` — data fetching, 30-second refresh timer, credential management
 
@@ -179,6 +192,9 @@ open build/ClaudeUsage.app
 **Widget shows "Setup Needed"**
 - Right-click → Settings → enter your session key and org ID
 
+**Widget shows "Session Expired" (red border)**
+- Your session key has expired. Go to claude.ai in your browser, re-extract the `sessionKey` cookie from DevTools, and paste it into Settings. The org ID does not expire — you only need to update the session key.
+
 **Widget not appearing**
 - The app runs as a background process (no dock icon). Check Activity Monitor for "ClaudeUsage"
 - Try quitting and relaunching: `open build/ClaudeUsage.app`
@@ -188,8 +204,8 @@ open build/ClaudeUsage.app
 - Try switching metrics (Settings → Display Metric) to see a different view of your usage.
 
 **Data not loading**
-- Session keys expire periodically — re-extract from claude.ai cookies
-- Check that your org ID is correct
+- If the widget shows "Session Expired", re-extract the session key (see above)
+- Check that your org ID is correct (it never expires, so if it worked before, it's still good)
 - Verify network connectivity
 
 **Build fails with SwiftBridging error**

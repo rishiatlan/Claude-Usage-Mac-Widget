@@ -95,9 +95,7 @@ You need two values from [claude.ai](https://claude.ai):
 1. Still in DevTools, switch to the **Network** tab
 2. Send any message in a Claude chat
 3. Look at the network requests — find any URL containing `/organizations/`
-4. The UUID after `/organizations/` is your org ID
-   - Example: `https://claude.ai/api/organizations/`**`a1b2c3d4-e5f6-7890-abcd-ef1234567890`**`/chat_conversations`
-   - Your org ID is `a1b2c3d4-e5f6-7890-abcd-ef1234567890`
+4. The UUID after `/organizations/` is your org ID — it's in standard `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` format
 
 > **Tip:** The org ID doesn't change. You only need to grab it once.
 

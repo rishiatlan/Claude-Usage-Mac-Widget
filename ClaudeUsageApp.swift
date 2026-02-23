@@ -407,22 +407,36 @@ struct WidgetViewData {
     let status: AppDelegate.UsageStatus
 }
 
+enum WidgetState {
+    case ok
+    case needsSetup
+    case sessionExpired
+    case loading
+}
+
 // MARK: - Widget View
 
 struct WidgetView: View {
     let data: WidgetViewData?
-    let needsSetup: Bool
+    let state: WidgetState
     var onSettings: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onQuit: (() -> Void)? = nil
 
     var body: some View {
         Group {
-            if needsSetup {
+            switch state {
+            case .needsSetup:
                 setupView
-            } else if let data = data {
-                dataView(data)
-            } else {
+            case .sessionExpired:
+                sessionExpiredView
+            case .ok:
+                if let data = data {
+                    dataView(data)
+                } else {
+                    loadingView
+                }
+            case .loading:
                 loadingView
             }
         }
@@ -515,6 +529,35 @@ struct WidgetView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    var sessionExpiredView: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "exclamationmark.arrow.circlepath")
+                .font(.system(size: 24))
+                .foregroundColor(.red)
+            Text("Session Expired")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.primary)
+            Text("Re-extract sessionKey\nfrom browser cookies")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Text("Right-click → Settings")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.orange)
+        }
+        .padding(12)
+        .frame(width: 140, height: 170)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.red.opacity(0.3), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     var loadingView: some View {
         VStack(spacing: 8) {
             ProgressView()
@@ -584,11 +627,11 @@ class WidgetPanelController {
         panel?.isVisible ?? false
     }
 
-    func show(with data: WidgetViewData?, needsSetup: Bool = false) {
+    func show(with data: WidgetViewData?, state: WidgetState = .ok) {
         if panel == nil {
             createPanel()
         }
-        updateContent(with: data, needsSetup: needsSetup)
+        updateContent(with: data, state: state)
         panel?.orderFront(nil)
         UserDefaults.standard.set(true, forKey: widgetVisibleKey)
     }
@@ -598,19 +641,19 @@ class WidgetPanelController {
         UserDefaults.standard.set(false, forKey: widgetVisibleKey)
     }
 
-    func toggle(with data: WidgetViewData?, needsSetup: Bool = false) {
+    func toggle(with data: WidgetViewData?, state: WidgetState = .ok) {
         if isVisible {
             hide()
         } else {
-            show(with: data, needsSetup: needsSetup)
+            show(with: data, state: state)
         }
     }
 
-    func updateContent(with data: WidgetViewData?, needsSetup: Bool = false) {
+    func updateContent(with data: WidgetViewData?, state: WidgetState = .ok) {
         guard let hostingView = hostingView else { return }
         hostingView.rootView = WidgetView(
             data: data,
-            needsSetup: needsSetup,
+            state: state,
             onSettings: onSettings,
             onRefresh: onRefresh,
             onQuit: onQuit
@@ -644,7 +687,7 @@ class WidgetPanelController {
 
         let widgetView = WidgetView(
             data: nil,
-            needsSetup: false,
+            state: .loading,
             onSettings: onSettings,
             onRefresh: onRefresh,
             onQuit: onQuit
@@ -712,13 +755,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Always show widget on launch — it IS the app
-        let needsSetup = (Preferences.shared.sessionKey ?? "").isEmpty || (Preferences.shared.organizationId ?? "").isEmpty
-        widgetController.show(with: currentWidgetData(), needsSetup: needsSetup)
+        let launchState: WidgetState = ((Preferences.shared.sessionKey ?? "").isEmpty || (Preferences.shared.organizationId ?? "").isEmpty) ? .needsSetup : .ok
+        widgetController.show(with: currentWidgetData(), state: launchState)
 
         // Auto-open settings on first launch
         if widgetController.isFirstLaunch {
             widgetController.markLaunched()
-            if needsSetup {
+            if launchState == .needsSetup {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     self?.openSettings()
                 }
@@ -954,7 +997,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.consecutiveFailures += 1
                 self.statusItem.button?.title = "❌"
                 if self.widgetController.isVisible {
-                    self.widgetController.updateContent(with: nil, needsSetup: true)
+                    self.widgetController.updateContent(with: nil, state: .needsSetup)
                 }
             }
             return
@@ -967,7 +1010,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.consecutiveFailures += 1
                 self.statusItem.button?.title = "❌"
                 if self.widgetController.isVisible {
-                    self.widgetController.updateContent(with: nil, needsSetup: true)
+                    self.widgetController.updateContent(with: nil, state: .needsSetup)
                 }
             }
             return
@@ -1000,6 +1043,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                 let msg = "HTTP \(httpResponse.statusCode) from API"
                 self.addLog(msg)
+
+                // 401/403 = session expired
+                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    DispatchQueue.main.async {
+                        self.consecutiveFailures += 1
+                        self.statusItem.button?.title = "🔑"
+                        if self.widgetController.isVisible {
+                            self.widgetController.updateContent(with: nil, state: .sessionExpired)
+                        }
+                    }
+                    return
+                }
+
                 self.handleFetchFailure(retryCount: retryCount)
                 return
             }
@@ -1137,7 +1193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Update desktop widget
         if widgetController.isVisible {
-            widgetController.updateContent(with: currentWidgetData(), needsSetup: false)
+            widgetController.updateContent(with: currentWidgetData(), state: .ok)
         }
     }
 

@@ -677,7 +677,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         fetchUsageData()
 
-        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.fetchUsageData()
         }
 

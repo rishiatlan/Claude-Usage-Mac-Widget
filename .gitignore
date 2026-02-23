@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+*.icns
+*.iconset/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.xcuserstate
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Environment
+.env

@@ -226,9 +226,12 @@ struct SettingsView: View {
                     TextField("Enter your Claude session key", text: $sessionKey)
                         .textFieldStyle(.roundedBorder)
 
-                    Text("Find this in your browser's cookies at claude.ai")
+                    Text("Browser → DevTools (Cmd+Opt+I) → Application → Cookies → claude.ai → sessionKey")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Text("⚠️ Session keys expire periodically. Re-extract from cookies if the widget stops updating.")
+                        .font(.caption)
+                        .foregroundColor(.orange)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -238,9 +241,12 @@ struct SettingsView: View {
                     TextField("Enter your organization ID", text: $organizationId)
                         .textFieldStyle(.roundedBorder)
 
-                    Text("Find this in any claude.ai API request URL")
+                    Text("DevTools → Network → send any message → find URL containing /organizations/ → copy the UUID")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Text("✓ Org ID never expires. You only need to grab it once.")
+                        .font(.caption)
+                        .foregroundColor(.green)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -455,6 +461,10 @@ struct WidgetView: View {
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
 
+            Text(statusMessage(data))
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(statusColor(data.status))
+
             if let expected = data.expectedUsage {
                 HStack(spacing: 4) {
                     Circle()
@@ -466,8 +476,8 @@ struct WidgetView: View {
                 }
             }
         }
-        .padding(14)
-        .frame(width: 130, height: 150)
+        .padding(12)
+        .frame(width: 140, height: 170)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
@@ -492,8 +502,8 @@ struct WidgetView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(14)
-        .frame(width: 130, height: 150)
+        .padding(12)
+        .frame(width: 140, height: 170)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
@@ -513,8 +523,8 @@ struct WidgetView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
         }
-        .padding(14)
-        .frame(width: 130, height: 150)
+        .padding(12)
+        .frame(width: 140, height: 170)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
@@ -524,6 +534,26 @@ struct WidgetView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    func statusMessage(_ data: WidgetViewData) -> String {
+        if data.utilization >= 100 {
+            return "Limit reached — wait for reset"
+        }
+        switch data.status {
+        case .onTrack:
+            if data.utilization < 30 {
+                return "Plenty of room"
+            }
+            return "On track — you're good"
+        case .borderline:
+            return "On pace — be mindful"
+        case .exceeding:
+            if data.utilization >= 90 {
+                return "Almost out — slow down"
+            }
+            return "Above pace — slow down"
+        }
     }
 
     func statusColor(_ status: AppDelegate.UsageStatus) -> Color {
@@ -609,7 +639,7 @@ class WidgetPanelController {
         let x = savedX ?? defaultX
         let y = savedY ?? defaultY
 
-        let rect = NSRect(x: x, y: y, width: 130, height: 150)
+        let rect = NSRect(x: x, y: y, width: 140, height: 170)
         panel = FloatingWidgetPanel(contentRect: rect)
 
         let widgetView = WidgetView(

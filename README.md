@@ -81,16 +81,34 @@ Requires macOS 13+ and Xcode Command Line Tools (`xcode-select --install`).
 ```bash
 git clone https://github.com/rishiatlan/Claude-Usage-Mac-Widget.git
 cd Claude-Usage-Mac-Widget
-chmod +x build.sh run.sh generate-icon.sh
+chmod +x build.sh run.sh setup.sh generate-icon.sh
 ./build.sh
-open build/ClaudeUsage.app
 ```
 
-The widget will appear on your desktop automatically on first launch.
+### 2. Setup Credentials
 
-### 2. Get Your Claude Credentials
+Run the interactive setup — it walks you through everything:
 
-You need two values from [claude.ai](https://claude.ai):
+```bash
+./setup.sh
+```
+
+The setup script will:
+1. Guide you to copy your **session key** from browser cookies (one paste)
+2. **Automatically fetch your org ID** from the Claude API (no manual step)
+3. **Validate both credentials** with a test API call and show your current usage
+4. Save to the app and offer to launch it
+
+That's it. The widget appears on your desktop with live data.
+
+> **When your session key expires**, just run `./setup.sh` again — it detects existing credentials and only asks for the new key.
+
+### Manual Setup (alternative)
+
+If you prefer to configure manually instead of using the setup script:
+
+<details>
+<summary>Click to expand manual instructions</summary>
 
 #### Session Key
 
@@ -98,28 +116,22 @@ You need two values from [claude.ai](https://claude.ai):
 2. Open DevTools — `Cmd + Option + I`
 3. Go to the **Application** tab (Chrome) or **Storage** tab (Safari)
 4. In the left sidebar, expand **Cookies** → click **https://claude.ai**
-5. Find the row named **`sessionKey`**
-6. Copy the full value — it starts with `sk-ant-sid01-...`
-
-> **Note:** Session keys expire periodically. If the widget stops updating, re-extract the key from your browser cookies.
+5. Find the row named **`sessionKey`** and copy the full value
 
 #### Organization ID
 
 1. Still in DevTools, switch to the **Network** tab
 2. Send any message in a Claude chat
-3. Look at the network requests — find any URL containing `/organizations/`
-4. The UUID after `/organizations/` is your org ID — it's in standard `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` format
+3. Find any request URL containing `/organizations/` — the UUID after it is your org ID
 
-> **Tip:** The org ID doesn't change. You only need to grab it once.
-
-### 3. Configure
+#### Configure
 
 1. **Right-click** the widget → **Settings...**
 2. Paste your **Session Key** and **Organization ID**
-3. Select which metric to display (5-hour recommended for day-to-day use)
+3. Select which metric to display (5-hour recommended)
 4. Click **Save**
 
-The widget will immediately fetch your usage data and display it.
+</details>
 
 ## Usage
 
@@ -190,10 +202,10 @@ open build/ClaudeUsage.app
 ## Troubleshooting
 
 **Widget shows "Setup Needed"**
-- Right-click → Settings → enter your session key and org ID
+- Run `./setup.sh` or right-click → Settings → enter your session key and org ID
 
 **Widget shows "Session Expired" (red border)**
-- Your session key has expired. Go to claude.ai in your browser, re-extract the `sessionKey` cookie from DevTools, and paste it into Settings. The org ID does not expire — you only need to update the session key.
+- Run `./setup.sh` to enter a fresh session key — the org ID is remembered and doesn't need to be re-entered.
 
 **Widget not appearing**
 - The app runs as a background process (no dock icon). Check Activity Monitor for "ClaudeUsage"
@@ -214,11 +226,14 @@ open build/ClaudeUsage.app
 **Widget disappeared after restart**
 - The app needs to be running for the widget to show. Enable "Launch at Login" in Settings, or add it to your Login Items manually.
 
-## Privacy
+## Privacy & Security
 
-- Credentials are stored locally in macOS UserDefaults
-- No telemetry, no analytics, no data sent anywhere except to `claude.ai/api` for usage data
-- Fully open source — read the single source file to verify
+- **No browser access** — `setup.sh` does not read your cookies, Keychain, or any browser data. You paste the session key yourself.
+- **Input is masked** — session key entry is hidden (`read -s`) and never echoed to the terminal or written to logs
+- **Local storage only** — credentials are saved to macOS UserDefaults on your machine
+- **No telemetry** — no analytics, no tracking. The only network calls go to `claude.ai/api` for usage data
+- **Org ID never expires** — you only need to set it up once. Session keys expire periodically (re-run `./setup.sh`)
+- **Fully open source** — read `setup.sh` and `ClaudeUsageApp.swift` to verify everything
 
 ## Credits
 

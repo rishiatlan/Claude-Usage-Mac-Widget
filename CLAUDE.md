@@ -62,9 +62,11 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 
 ## Credentials
 
-- **Session key**: Extracted from browser cookies at claude.ai. Expires periodically — app detects this via 401/403.
-- **Org ID**: From any claude.ai API request URL. Never expires.
+- **Setup**: `./setup.sh` — interactive CLI that guides session key paste, auto-fetches org ID via API, validates, and saves
+- **Session key**: User pastes from browser cookies. Expires periodically — app detects via 401/403, widget shows "Session Expired"
+- **Org ID**: Auto-fetched by `setup.sh` via `GET /api/organizations`. Never expires.
 - Stored in `UserDefaults` (domain: `com.claude.usage`). Falls back to env vars `CLAUDE_SESSION_KEY` and `CLAUDE_ORGANIZATION_ID`.
+- **Security**: `setup.sh` never reads browser files, Keychain, or cookies directly. Input is masked (`read -s`). No credentials in logs or temp files.
 
 ## File Roles
 
@@ -74,6 +76,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 | `Info.plist` | Bundle config: `LSUIElement=true`, min macOS 13.0 |
 | `build.sh` | Build script (invokes `swiftc` + `generate-icon.sh`) |
 | `run.sh` | Kill existing + rebuild if needed + launch |
+| `setup.sh` | Interactive credential setup — guides paste, auto-fetches org ID, validates |
 | `generate-icon.sh` | Programmatically draws app icon via inline Swift |
 | `create-dmg.sh` | Packages app into distributable DMG |
 

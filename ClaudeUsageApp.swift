@@ -101,6 +101,7 @@ class Preferences {
     private let numberDisplayStyleKey = "numberDisplayStyle"
     private let progressIconStyleKey = "progressIconStyle"
     private let showStatusEmojiKey = "showStatusEmoji"
+    private let launchAtLoginConfiguredKey = "launchAtLoginConfigured"
 
     var sessionKey: String? {
         get { defaults.string(forKey: sessionKeyKey) }
@@ -161,6 +162,13 @@ class Preferences {
         set {
             defaults.set(newValue, forKey: showStatusEmojiKey)
         }
+    }
+
+    /// Tracks whether Launch at Login has been configured for this install.
+    /// False on first run → app auto-enables it. User can toggle it off in Settings afterwards.
+    var launchAtLoginConfigured: Bool {
+        get { defaults.bool(forKey: launchAtLoginConfiguredKey) }
+        set { defaults.set(newValue, forKey: launchAtLoginConfiguredKey) }
     }
 }
 
@@ -767,6 +775,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.openSettings()
                 }
             }
+        }
+
+        // Enable Launch at Login by default on first run (or first run after upgrade).
+        // launchAtLoginConfigured stays false until we set it, so existing users get this once.
+        // After that, whatever the user sets in Settings is respected — we never override it.
+        if !Preferences.shared.launchAtLoginConfigured {
+            LoginItemManager.shared.setLoginItemEnabled(true)
+            Preferences.shared.launchAtLoginConfigured = true
+            addLog("Launch at Login enabled by default")
         }
     }
 

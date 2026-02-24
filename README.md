@@ -308,14 +308,14 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 | **Stuck at same %** | That's accurate — 5-hour recovers gradually, 7-day resets weekly. Try switching metrics. |
 | **`setup.sh` says "Cloudflare blocked"** | Normal. Enter org ID manually when prompted. Widget app is unaffected. |
 | **Build fails (SwiftBridging)** | `sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install` |
-| **Widget gone after restart** | Enable **Launch at Login** in Settings |
+| **Widget gone after restart** | Launch at Login is enabled by default. If you disabled it, re-enable via right-click → Settings |
 
 ---
 
 ## Roadmap
 
 - [ ] Menu bar mode
-- [ ] Launch at Login improvements
+- [x] Launch at Login — enabled by default via `SMAppService`, toggleable in Settings
 - [ ] Optional usage history graph
 - [ ] Signed / notarized build
 - [ ] Homebrew formula

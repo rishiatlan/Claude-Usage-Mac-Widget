@@ -295,7 +295,7 @@ Claude-Usage-Mac-Widget/
 
 1. **MetricType Enum** — Available metrics (5-hour, 7-day, Sonnet)
 2. **Display Style Enums** — NumberDisplayStyle, ProgressIconStyle
-3. **LoginItemManager** — Launch at Login via AppleScript
+3. **LoginItemManager** — Launch at Login via `SMAppService` (macOS 13+ native API)
 4. **Preferences Manager** — UserDefaults wrapper for all settings
 5. **SettingsWindowController** — NSWindowController for Settings
 6. **SettingsView (SwiftUI)** — Settings UI with credential hints

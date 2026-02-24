@@ -30,7 +30,7 @@ After editing `ClaudeUsageApp.swift`, always rebuild and relaunch — there is n
 Everything lives in `ClaudeUsageApp.swift` (~1420 lines). Key sections in order:
 
 1. **Enums** — `MetricType`, `NumberDisplayStyle`, `ProgressIconStyle` define user-facing options
-2. **LoginItemManager** — AppleScript-based Launch at Login (not LaunchAgent)
+2. **LoginItemManager** — `SMAppService`-based Launch at Login (macOS 13+ native API, no special permissions required)
 3. **Preferences** — Singleton wrapping `UserDefaults.standard` for all settings
 4. **SettingsView** — SwiftUI view hosted in an `NSWindowController`, with credential hints inline
 5. **FloatingWidgetPanel** — `NSPanel` subclass: borderless, floating, non-activating, all Spaces, draggable

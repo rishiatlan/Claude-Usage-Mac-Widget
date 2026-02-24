@@ -282,8 +282,7 @@ Claude-Usage-Mac-Widget/
 ├── README.md               - User documentation
 ├── DEVELOPMENT.md          - This file
 ├── CLAUDE.md               - Claude Code guidance
-├── assets/                 - Screenshots and hero image for README
-│   ├── hero.png            - AI-generated marketing composite
+├── assets/                 - Widget screenshots for README
 │   ├── widget-on-track.png - Widget screenshot (green state)
 │   └── widget-limit-reached.png - Widget screenshot (limit reached)
 └── build/                  - Build output directory

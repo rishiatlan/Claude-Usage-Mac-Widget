@@ -3,7 +3,9 @@
 A lightweight macOS desktop widget that shows your Claude usage in real time — with pace tracking and reset countdown.
 
 <p align="center">
-  <img src="assets/hero.png" width="720" alt="Claude Usage Mac Widget" />
+  <img src="assets/widget-on-track.png" width="200" alt="Widget — on track" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/widget-limit-reached.png" width="200" alt="Widget — limit reached" />
 </p>
 
 <p align="center">
@@ -322,7 +324,7 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 
 ## Credits
 
-Built on top of [claude-usage](https://github.com/amoga-org/claude-usage) by **amoga-org**. Desktop widget adaptation by [@rishiatlan](https://github.com/rishiatlan).
+Built on top of [claude-usage](https://github.com/amoga-org/claude-usage) by **[amoga.io](https://amoga.io)**. Desktop widget adaptation by [@rishiatlan](https://github.com/rishiatlan).
 
 ## License
 

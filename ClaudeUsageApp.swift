@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import ServiceManagement
 
 // MARK: - Metric Type Enum
 
@@ -38,54 +39,22 @@ enum ProgressIconStyle: String, CaseIterable {
 
 class LoginItemManager {
     static let shared = LoginItemManager()
-    private let appPath = "/Applications/ClaudeUsage.app"
 
+    /// Uses SMAppService (macOS 13+) — no AppleScript, no special permissions required.
     var isLoginItemEnabled: Bool {
-        let script = """
-            tell application "System Events"
-                get the name of every login item
-            end tell
-        """
-        guard let appleScript = NSAppleScript(source: script) else { return false }
-        var error: NSDictionary?
-        let result = appleScript.executeAndReturnError(&error)
-
-        if let items = result.coerce(toDescriptorType: typeAEList) {
-            for i in 1...items.numberOfItems {
-                if let item = items.atIndex(i)?.stringValue, item == "ClaudeUsage" {
-                    return true
-                }
-            }
-        }
-        return false
+        SMAppService.mainApp.status == .enabled
     }
 
     func setLoginItemEnabled(_ enabled: Bool) {
-        if enabled {
-            addLoginItem()
-        } else {
-            removeLoginItem()
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            print("LoginItemManager: failed to \(enabled ? "enable" : "disable") launch at login: \(error)")
         }
-    }
-
-    private func addLoginItem() {
-        let script = """
-            tell application "System Events"
-                make login item at end with properties {path:"\(appPath)", hidden:false}
-            end tell
-        """
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
-    }
-
-    private func removeLoginItem() {
-        let script = """
-            tell application "System Events"
-                delete login item "ClaudeUsage"
-            end tell
-        """
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
     }
 }
 

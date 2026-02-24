@@ -24,10 +24,12 @@ ClaudeUsageApp.swift
 ### Data Flow
 
 1. **Startup**: App launches → Reads preferences → Shows widget → Fetches usage data → Updates widget
-2. **Auto-refresh**: Timer triggers every 30 seconds → Fetches usage data → Updates widget
+2. **Auto-refresh**: Timer triggers every 30 seconds → Fetches usage data → Updates widget (skipped if `isSessionExpired`)
 3. **User interaction**: Right-click context menu → Settings/Refresh/Quit
-4. **Session expired**: API returns 401/403 → Widget shows "Session Expired" state with red border
-5. **Credentials missing**: Widget shows "Setup Needed" → auto-opens Settings on first launch
+4. **Session expired**: API returns 401/403 with JSON body → `isSessionExpired = true` → Polling paused → Widget shows "Session Expired" (red border)
+5. **Cloudflare challenge**: API returns 403 with HTML body → Treated as transient error → Retry with exponential backoff (up to 3 times)
+6. **Credentials missing**: Widget shows "Setup Needed" → auto-opens Settings on first launch
+7. **Settings saved**: `Notification.Name.settingsChanged` fires → `isSessionExpired` and `consecutiveFailures` reset → Immediate re-fetch
 
 ## Code Structure
 
@@ -47,6 +49,7 @@ https://claude.ai/api/organizations/{org_id}/usage
 
 // Authentication
 Cookie: sessionKey={value}
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0
 
 // Response structure
 {
@@ -55,6 +58,23 @@ Cookie: sessionKey={value}
   "seven_day_sonnet": { "utilization": 6.0, "resets_at": "..." }
 }
 ```
+
+### Cloudflare Handling
+
+The API sits behind Cloudflare, which may challenge non-browser requests with a 403 HTML page. The app distinguishes Cloudflare challenges from real auth errors by checking the response body:
+
+```swift
+// Cloudflare markers checked in response body
+"Just a moment"           // Cloudflare interstitial title
+"cf-browser-verification" // Cloudflare JS challenge
+"challenge-platform"      // Cloudflare challenge script
+"_cf_chl_opt"             // Cloudflare challenge options object
+```
+
+- **Cloudflare 403**: Retry with exponential backoff (transient error)
+- **Real 401/403**: Set `isSessionExpired = true`, show "Session Expired" widget state, pause polling
+
+The `setup.sh` script uses the same detection with a `is_cloudflare_challenge()` bash function and sends a browser-like `User-Agent` header to reduce challenge frequency.
 
 ### Pace Calculation Algorithm
 
@@ -219,9 +239,15 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 - Check date parsing in `formatRelativeDate()`
 
 **Widget shows "Session Expired":**
-- API returned HTTP 401 or 403
+- API returned HTTP 401 or 403 with a JSON response (real auth error, not Cloudflare)
 - Session key has expired — user needs to re-extract from browser cookies
 - Org ID never expires — no need to re-enter
+- Once expired, polling pauses (`isSessionExpired = true`) — save new credentials in Settings to resume
+
+**Cloudflare blocking `curl` but not the app:**
+- `curl` may get a 403 HTML challenge page from Cloudflare — this is NOT a session expiry
+- The app's `URLSession` usually passes through Cloudflare without issues
+- Both the app and `setup.sh` detect Cloudflare challenges by checking the response body for markers
 
 **API errors:**
 - Verify session key is valid (they expire periodically)
@@ -245,7 +271,7 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 
 ```
 Claude-Usage-Mac-Widget/
-├── ClaudeUsageApp.swift    - Main application code (single file, ~1100 lines)
+├── ClaudeUsageApp.swift    - Main application code (single file, ~1400 lines)
 ├── Info.plist              - App bundle configuration (LSUIElement = true)
 ├── build.sh                - Build script
 ├── run.sh                  - Run script with environment check
@@ -289,6 +315,8 @@ Claude-Usage-Mac-Widget/
 - Session key stored in UserDefaults (not encrypted)
 - No data sent to third parties
 - Only communicates with claude.ai API
+- Custom `User-Agent` header sent with all requests to reduce Cloudflare challenges
+- `setup.sh` uses masked input (`read -s`) — session key never echoed or logged
 - For production: Consider using Keychain for session key storage
 
 ## Future Enhancement Ideas
@@ -319,7 +347,9 @@ When making changes:
 2. Verify settings persistence (quit and relaunch)
 3. Check widget updates correctly with live data
 4. Test with invalid/missing session keys (should show "Setup Needed")
-5. Test with expired session key (should show "Session Expired" with red border)
-6. Test right-click context menu (Settings, Refresh, Quit)
-7. Test widget drag and position persistence
-8. Update this documentation if adding features
+5. Test with expired session key (should show "Session Expired" with red border, polling should pause)
+6. Test that saving new credentials in Settings resumes polling after session expiry
+7. Test right-click context menu (Settings, Refresh, Quit)
+8. Test widget drag and position persistence
+9. Verify Cloudflare 403s are retried (not treated as session expiry) — check logs for "Cloudflare challenge detected"
+10. Update this documentation if adding features

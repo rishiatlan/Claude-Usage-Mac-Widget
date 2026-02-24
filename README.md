@@ -15,6 +15,7 @@ A floating macOS desktop widget that shows your Claude API usage at a glance. Al
 - **Near-realtime** — auto-refreshes every 30 seconds
 - **Plain-English status** — shows "Plenty of room", "On pace — be mindful", "Almost out — slow down", etc.
 - **Session expiry detection** — widget turns red and tells you to re-extract your session key when it expires
+- **Cloudflare-aware** — distinguishes Cloudflare challenges from real auth errors so the widget doesn't falsely show "Session Expired"
 
 ## Understanding Your Usage
 
@@ -205,7 +206,8 @@ open build/ClaudeUsage.app
 - Run `./setup.sh` or right-click → Settings → enter your session key and org ID
 
 **Widget shows "Session Expired" (red border)**
-- Run `./setup.sh` to enter a fresh session key — the org ID is remembered and doesn't need to be re-entered.
+- Your session key has genuinely expired. Run `./setup.sh` to enter a fresh one — the org ID is remembered and doesn't need to be re-entered.
+- Once expired, the widget pauses polling to avoid hammering the API. Saving new credentials in Settings or `./setup.sh` resumes it automatically.
 
 **Widget not appearing**
 - The app runs as a background process (no dock icon). Check Activity Monitor for "ClaudeUsage"
@@ -220,6 +222,11 @@ open build/ClaudeUsage.app
 - Check that your org ID is correct (it never expires, so if it worked before, it's still good)
 - Verify network connectivity
 
+**`setup.sh` shows "Cloudflare blocked the request"**
+- This is normal — Cloudflare sometimes challenges `curl` requests. Your session key is probably fine.
+- The setup script will ask you to enter the org ID manually instead. The widget app uses macOS `URLSession` which typically passes through Cloudflare without issues.
+- You can safely save credentials and launch the widget — it will validate them on its own.
+
 **Build fails with SwiftBridging error**
 - Reinstall Command Line Tools: `sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install`
 
@@ -232,6 +239,8 @@ open build/ClaudeUsage.app
 - **Input is masked** — session key entry is hidden (`read -s`) and never echoed to the terminal or written to logs
 - **Local storage only** — credentials are saved to macOS UserDefaults on your machine
 - **No telemetry** — no analytics, no tracking. The only network calls go to `claude.ai/api` for usage data
+- **Cloudflare-aware** — the app and `setup.sh` both detect Cloudflare challenge pages and handle them gracefully, without falsely reporting session expiry
+- **Smart polling** — when session genuinely expires, the app pauses API polling to avoid unnecessary requests until new credentials are saved
 - **Org ID never expires** — you only need to set it up once. Session keys expire periodically (re-run `./setup.sh`)
 - **Fully open source** — read `setup.sh` and `ClaudeUsageApp.swift` to verify everything
 

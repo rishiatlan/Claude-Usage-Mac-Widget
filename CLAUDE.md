@@ -44,9 +44,10 @@ Everything lives in `ClaudeUsageApp.swift` (~1400 lines). Key sections in order:
 ## Key Patterns
 
 - **SwiftUI inside Cocoa**: All SwiftUI views are wrapped in `NSHostingView` for embedding in `NSPanel`/`NSWindow`
-- **Settings propagation**: Save button posts `Notification.Name.settingsChanged`, AppDelegate observes it to re-fetch
+- **Settings propagation**: Save button posts `Notification.Name.settingsChanged`, AppDelegate observes it to re-fetch and resets `isSessionExpired` flag
 - **Retry with backoff**: Failed API calls retry up to 3 times with exponential backoff (1s, 2s, 4s)
-- **Session expiry detection**: HTTP 401/403 triggers `.sessionExpired` widget state (red border, user prompt)
+- **Cloudflare vs session expiry**: HTTP 401/403 responses are inspected — Cloudflare challenge pages (HTML with "Just a moment") trigger retry with backoff; real auth errors (JSON) trigger `.sessionExpired` widget state
+- **Polling pause on expiry**: When session is confirmed expired (`isSessionExpired = true`), the 30-second timer skips API calls to avoid hammering the server. Resets when user saves new credentials via Settings.
 - **Pace calculation**: `expectedUsage = (timeElapsed / windowDuration) * 100`, compared ±5% to determine on-track/borderline/exceeding
 
 ## API
@@ -56,9 +57,12 @@ Single endpoint, polled every 30 seconds:
 ```
 GET https://claude.ai/api/organizations/{orgId}/usage
 Cookie: sessionKey={key}
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0
 ```
 
 Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`, etc. Each has `utilization: Double` and `resets_at: String?` (ISO8601).
+
+**Cloudflare note**: The API sits behind Cloudflare. `curl` requests may get challenged with a 403 HTML page ("Just a moment..."). The app's `URLSession` typically passes through. Both the app and `setup.sh` detect Cloudflare challenges by checking the response body for markers (`Just a moment`, `challenge-platform`, `_cf_chl_opt`, `cf-browser-verification`) and handle them as transient errors rather than session expiry.
 
 ## Credentials
 
@@ -90,3 +94,5 @@ App logs to `~/.claude-usage/app.log` (append) and keeps last 50 entries in memo
 - The menubar icon may be invisible on macOS 26 (Tahoe) due to notch/overflow behavior — the widget is the reliable UI
 - `generate-icon.sh` uses inline Swift compilation via heredoc — it may fail on some setups but build.sh continues gracefully
 - Widget position is saved per-pixel in UserDefaults — resetting preferences (`defaults delete com.claude.usage`) clears everything including credentials
+- **Cloudflare 403 ≠ session expired**: `curl` tests against the API may return 403 with an HTML challenge page — this is Cloudflare blocking non-browser requests, not an expired session. The app distinguishes these by checking the response body for Cloudflare markers before declaring session expired.
+- **Polling pauses on expiry**: Once `isSessionExpired` is set, the 30-second timer skips fetches. The flag resets when `Notification.Name.settingsChanged` fires (user saves new credentials).

@@ -87,6 +87,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 | `DEVELOPMENT.md` | Developer guide — architecture, adding features, debugging |
 | `CLAUDE.md` | Claude Code guidance — this file |
 | `icon.svg` | Source icon for the app |
+| `assets/` | Screenshots and hero image for README |
 
 ## Logging
 

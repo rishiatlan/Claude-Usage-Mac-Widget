@@ -92,13 +92,13 @@ expectedConsumption = (timeElapsed / windowDuration) * 100
 // expectedConsumption = (2 / 5) * 100 = 40%
 // If actual = 60%, then 20% over expected
 
-// Icon logic
-if utilization < expectedConsumption:
-    icon = "✅"  // On track
-else if utilization <= expectedConsumption + 10:
-    icon = "⚠️"  // Slightly over (within 10% threshold)
+// Status logic (±5% threshold)
+if utilization < expectedConsumption - 5:
+    status = .onTrack     // ✅ Green — below pace
+else if utilization <= expectedConsumption + 5:
+    status = .borderline  // ⚠️ Orange — roughly on pace
 else:
-    icon = "🚨"  // Significantly over (more than 10% threshold)
+    status = .exceeding   // 🚨 Red — above pace
 ```
 
 ## Development Setup
@@ -207,7 +207,7 @@ Edit `updateMenuBarIcon()` function to change:
 **Settings Window:**
 ```swift
 // In SettingsWindowController init()
-contentRect: NSRect(x: 0, y: 0, width: 450, height: 350)  // Adjust size
+contentRect: NSRect(x: 0, y: 0, width: 520, height: 580)  // Adjust size
 ```
 
 **Settings View Layout:**
@@ -271,15 +271,17 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 
 ```
 Claude-Usage-Mac-Widget/
-├── ClaudeUsageApp.swift    - Main application code (single file, ~1400 lines)
+├── ClaudeUsageApp.swift    - Main application code (single file, ~1420 lines)
 ├── Info.plist              - App bundle configuration (LSUIElement = true)
 ├── build.sh                - Build script
 ├── run.sh                  - Run script with environment check
+├── setup.sh                - Interactive credential setup (CLI)
 ├── generate-icon.sh        - App icon generator
 ├── create-dmg.sh           - DMG packaging script
 ├── icon.svg                - Source icon
 ├── README.md               - User documentation
 ├── DEVELOPMENT.md          - This file
+├── CLAUDE.md               - Claude Code guidance
 └── build/                  - Build output directory
     └── ClaudeUsage.app/    - Built application bundle
 ```

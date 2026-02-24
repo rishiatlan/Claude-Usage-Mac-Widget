@@ -168,6 +168,7 @@ The app calls the Claude API usage endpoint every 30 seconds:
 ```
 GET https://claude.ai/api/organizations/{orgId}/usage
 Cookie: sessionKey={key}
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0
 ```
 
 It parses the response for your current utilization percentage, computes expected pace based on time elapsed in the billing window, and renders it as a floating translucent widget using `NSPanel` with `.ultraThinMaterial` background.

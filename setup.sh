@@ -67,39 +67,64 @@ echo "  4. Find the row named   →  sessionKey"
 echo "  5. Copy the full value  →  starts with sk-ant-sid..."
 echo ""
 
-SESSION_KEY=""
-ATTEMPTS=0
-MAX_ATTEMPTS=3
+get_session_key() {
+    SESSION_KEY=""
+    local ATTEMPTS=0
+    local MAX_ATTEMPTS=3
 
-while [ -z "$SESSION_KEY" ] && [ "$ATTEMPTS" -lt "$MAX_ATTEMPTS" ]; do
-    ATTEMPTS=$((ATTEMPTS + 1))
+    while [ -z "$SESSION_KEY" ] && [ "$ATTEMPTS" -lt "$MAX_ATTEMPTS" ]; do
+        ATTEMPTS=$((ATTEMPTS + 1))
 
-    echo -n "Paste your session key (input is hidden): "
-    read -s -r RAW_KEY
-    echo ""
+        echo -n "Paste your session key (input is hidden): "
+        read -s -r RAW_KEY
+        echo ""
 
-    # Trim whitespace
-    RAW_KEY=$(echo "$RAW_KEY" | xargs)
+        # Trim whitespace
+        RAW_KEY=$(echo "$RAW_KEY" | xargs)
 
-    if [ -z "$RAW_KEY" ]; then
-        print_err "No input received. Try again. ($ATTEMPTS/$MAX_ATTEMPTS)"
-        continue
+        if [ -z "$RAW_KEY" ]; then
+            print_err "No input received. Try again. ($ATTEMPTS/$MAX_ATTEMPTS)"
+            continue
+        fi
+
+        if [[ "$RAW_KEY" != sk-ant-sid* ]]; then
+            print_err "Invalid format — session key should start with 'sk-ant-sid'. Try again. ($ATTEMPTS/$MAX_ATTEMPTS)"
+            continue
+        fi
+
+        SESSION_KEY="$RAW_KEY"
+        print_ok "Session key accepted (format valid)."
+    done
+
+    if [ -z "$SESSION_KEY" ]; then
+        echo ""
+        print_err "Too many failed attempts. Run ./setup.sh to try again."
+        exit 1
     fi
+}
 
-    if [[ "$RAW_KEY" != sk-ant-sid* ]]; then
-        print_err "Invalid format — session key should start with 'sk-ant-sid'. Try again. ($ATTEMPTS/$MAX_ATTEMPTS)"
-        continue
-    fi
-
-    SESSION_KEY="$RAW_KEY"
-    print_ok "Session key accepted (format valid)."
-done
-
-if [ -z "$SESSION_KEY" ]; then
+prompt_manual_org_id() {
     echo ""
-    print_err "Too many failed attempts. Run ./setup.sh to try again."
-    exit 1
-fi
+    echo "To find your org ID manually:"
+    echo "  1. Open DevTools on claude.ai  →  Cmd + Option + I"
+    echo "  2. Go to the Network tab"
+    echo "  3. Send any message in Claude"
+    echo "  4. Find a request URL containing /organizations/"
+    echo "  5. Copy the UUID after /organizations/ (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
+    echo ""
+    read -r -p "Paste your organization ID: " MANUAL_ORG
+    MANUAL_ORG=$(echo "$MANUAL_ORG" | xargs)
+    if [[ "$MANUAL_ORG" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+        ORG_ID="$MANUAL_ORG"
+        print_ok "Organization ID accepted."
+    else
+        print_err "Invalid UUID format. Run ./setup.sh to try again."
+        exit 1
+    fi
+}
+
+# --- Step 1: Session Key ---
+get_session_key
 
 # ============================================================
 # Step 2: Organization ID (automatic)
@@ -119,26 +144,47 @@ BODY=$(echo "$ORG_RESPONSE" | sed '$d')
 if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
     echo ""
     print_err "Session key is invalid or expired (HTTP $HTTP_CODE)."
-    echo "    Re-extract a fresh sessionKey from your browser cookies and try again."
     echo ""
-    print_err "Run ./setup.sh to restart."
-    exit 1
+    echo "This usually means the key you pasted has already expired."
+    echo "Go back to claude.ai → DevTools → Cookies → copy a fresh sessionKey."
+    echo ""
+    read -r -p "Try again with a new key? [Y/n] " RETRY_KEY
+    if [[ "$RETRY_KEY" != "n" && "$RETRY_KEY" != "N" ]]; then
+        print_step "1/3" "Session Key (retry)"
+        echo ""
+        get_session_key
+
+        # Retry org fetch
+        echo -e "${DIM}Fetching organizations...${RESET}"
+        ORG_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Cookie: sessionKey=$SESSION_KEY" \
+            -H "Accept: application/json" \
+            "$API_BASE/organizations" 2>/dev/null)
+        HTTP_CODE=$(echo "$ORG_RESPONSE" | tail -1)
+        BODY=$(echo "$ORG_RESPONSE" | sed '$d')
+
+        if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+            print_err "Still getting HTTP $HTTP_CODE. The session key may not be valid."
+            echo ""
+            echo "You can still set up manually:"
+            prompt_manual_org_id
+        fi
+    else
+        echo ""
+        print_err "Setup cancelled. Run ./setup.sh when you have a fresh session key."
+        exit 1
+    fi
 fi
 
-if [ "$HTTP_CODE" != "200" ]; then
+if [ -z "$ORG_ID" ] && [ "$HTTP_CODE" != "200" ]; then
     echo ""
-    print_err "Unexpected response from Claude API (HTTP $HTTP_CODE)."
-    echo "    Check your network connection and try again."
+    print_warn "Could not reach Claude API (HTTP $HTTP_CODE)."
     echo ""
-
-    # Fall back to manual org ID entry
-    read -r -p "Enter your organization ID manually (UUID format): " MANUAL_ORG
-    MANUAL_ORG=$(echo "$MANUAL_ORG" | xargs)
-    if [[ "$MANUAL_ORG" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-        ORG_ID="$MANUAL_ORG"
-        print_ok "Organization ID accepted."
+    read -r -p "Enter org ID manually instead? [Y/n] " MANUAL_CHOICE
+    if [[ "$MANUAL_CHOICE" != "n" && "$MANUAL_CHOICE" != "N" ]]; then
+        prompt_manual_org_id
     else
-        print_err "Invalid UUID format. Run ./setup.sh to try again."
+        print_err "Setup cancelled. Check your network and run ./setup.sh again."
         exit 1
     fi
 fi
@@ -151,17 +197,8 @@ if [ -z "$ORG_ID" ]; then
     ORG_NAMES=($(echo "$BODY" | grep -oE '"name"\s*:\s*"[^"]*"' | sed 's/"name"\s*:\s*"//;s/"$//'))
 
     if [ ${#ORG_IDS[@]} -eq 0 ]; then
-        print_err "No organizations found in API response."
-        echo ""
-        read -r -p "Enter your organization ID manually (UUID format): " MANUAL_ORG
-        MANUAL_ORG=$(echo "$MANUAL_ORG" | xargs)
-        if [[ "$MANUAL_ORG" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-            ORG_ID="$MANUAL_ORG"
-            print_ok "Organization ID accepted."
-        else
-            print_err "Invalid UUID format. Run ./setup.sh to try again."
-            exit 1
-        fi
+        print_warn "No organizations found in API response."
+        prompt_manual_org_id
     elif [ ${#ORG_IDS[@]} -eq 1 ]; then
         ORG_ID="${ORG_IDS[0]}"
         ORG_NAME="${ORG_NAMES[0]:-unknown}"
@@ -218,12 +255,27 @@ if [ "$USAGE_CODE" = "200" ]; then
     fi
 elif [ "$USAGE_CODE" = "401" ] || [ "$USAGE_CODE" = "403" ]; then
     print_err "Authentication failed (HTTP $USAGE_CODE). Session key may have expired."
-    echo "    Re-extract from browser cookies and run ./setup.sh again."
-    exit 1
+    echo ""
+    echo "    Options:"
+    echo "    • Re-extract a fresh sessionKey from browser cookies and run ./setup.sh again"
+    echo "    • Or continue anyway — the widget will show 'Session Expired' and prompt you to update"
+    echo ""
+    read -r -p "Save credentials anyway? [y/N] " SAVE_ANYWAY
+    if [[ "$SAVE_ANYWAY" != "y" && "$SAVE_ANYWAY" != "Y" ]]; then
+        print_err "Setup cancelled. Run ./setup.sh with a fresh session key."
+        exit 1
+    fi
+    print_warn "Saving with unvalidated credentials — update the session key in Settings when ready."
 elif [ "$USAGE_CODE" = "404" ]; then
-    print_err "Organization not found (HTTP 404). The org ID may be incorrect."
-    echo "    Run ./setup.sh to try again."
-    exit 1
+    print_warn "Organization not found (HTTP 404). The org ID may be incorrect."
+    echo ""
+    read -r -p "Enter org ID manually? [Y/n] " FIX_ORG
+    if [[ "$FIX_ORG" != "n" && "$FIX_ORG" != "N" ]]; then
+        prompt_manual_org_id
+    else
+        print_err "Setup cancelled. Run ./setup.sh to try again."
+        exit 1
+    fi
 else
     print_warn "Could not validate (HTTP $USAGE_CODE). Saving credentials anyway — the widget will retry."
 fi

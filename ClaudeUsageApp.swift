@@ -654,14 +654,25 @@ struct WidgetView: View {
         }
     }
 
+    /// The ring color accounts for multi-limit context:
+    /// - Red only when ALL limits are exhausted (user is actually blocked)
+    /// - Orange when selected metric is full but others have room (still usable)
+    /// - Otherwise uses the normal status color (green/orange/red based on pace)
+    func ringColor(_ data: WidgetViewData) -> Color {
+        if data.utilization >= 100 && !data.allLimitsExhausted {
+            return .orange // "Caution" not "Blocked"
+        }
+        return statusColor(data.status)
+    }
+
     func dataView(_ data: WidgetViewData) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             ZStack {
                 Circle()
                     .stroke(Color.gray.opacity(0.2), lineWidth: 6)
                 Circle()
                     .trim(from: 0, to: min(data.utilization / 100.0, 1.0))
-                    .stroke(statusColor(data.status), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(ringColor(data), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeInOut(duration: 0.5), value: data.utilization)
 
@@ -677,29 +688,45 @@ struct WidgetView: View {
             }
             .frame(width: 76, height: 76)
 
-            Text("Resets \(data.resetTimeString)")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
+            // When one window is full but Claude still works — show green "Still usable" badge
+            if data.utilization >= 95 && !data.allLimitsExhausted && data.otherLimitsNote != nil {
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 9))
+                    Text("Still usable")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundColor(.green)
 
-            Text(statusMessage(data))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(statusColor(data.status))
-
-            if let note = data.otherLimitsNote, data.utilization >= 95 {
-                Text(note)
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundColor(.blue.opacity(0.8))
-                    .lineLimit(1)
-            }
-
-            if let expected = data.expectedUsage {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(statusColor(data.status))
-                        .frame(width: 6, height: 6)
-                    Text("pace: \(Int(expected))%")
-                        .font(.system(size: 9, design: .monospaced))
+                if let note = data.otherLimitsNote {
+                    Text(note)
+                        .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text("Resets \(data.resetTimeString)")
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+            } else {
+                // Normal state — show reset time, status, and pace
+                Text("Resets \(data.resetTimeString)")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+
+                Text(statusMessage(data))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(ringColor(data))
+
+                if let expected = data.expectedUsage, data.utilization < 95 {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(statusColor(data.status))
+                            .frame(width: 6, height: 6)
+                        Text("pace: \(Int(expected))%")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
@@ -806,8 +833,8 @@ struct WidgetView: View {
             if data.allLimitsExhausted {
                 return "All limits reached — wait for reset"
             }
-            // This specific window is full, but others have room
-            return "Window full — still available"
+            // Widget shows "Still usable" badge separately — keep this short
+            return "This window recovering"
         }
         switch data.status {
         case .onTrack:

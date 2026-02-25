@@ -54,7 +54,7 @@ No tab switching. No guesswork.
 </tr>
 <tr>
 <td align="center"><em>On track — plenty of room</em></td>
-<td align="center"><em>Limit reached — wait for reset</em></td>
+<td align="center"><em>Window full — other limits shown</em></td>
 <td align="center"><em>Session expired — re-authenticate</em></td>
 </tr>
 </table>
@@ -67,6 +67,8 @@ No tab switching. No guesswork.
 - **Auto-refresh** every 30 seconds
 - **Session expiry detection** with red border alert
 - **Cloudflare-aware** — won't falsely show "Session Expired"
+- **Multi-limit aware** — when one window is full, shows remaining capacity on other limits
+- **Self-updating** — checks for updates every 24h, one-click update via Settings
 - **Plain-English status** messages
 - **Minimal**, translucent macOS-native UI
 

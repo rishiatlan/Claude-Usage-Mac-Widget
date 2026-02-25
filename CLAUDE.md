@@ -50,6 +50,8 @@ Everything lives in `ClaudeUsageApp.swift` (~1660 lines). Key sections in order:
 - **Cloudflare vs session expiry**: HTTP 401/403 responses are inspected — Cloudflare challenge pages (HTML with "Just a moment") trigger retry with backoff; real auth errors (JSON) trigger `.sessionExpired` widget state
 - **Polling pause on expiry**: When session is confirmed expired (`isSessionExpired = true`), the 30-second timer skips API calls to avoid hammering the server. Resets when user saves new credentials via Settings.
 - **Pace calculation**: `expectedUsage = (timeElapsed / windowDuration) * 100`, compared ±5% to determine on-track/borderline/exceeding
+- **Multi-limit awareness**: When the selected metric is at 100% but other limits have room, the widget shows "Window full — still available" with a blue note showing other limits. "All limits reached" only appears when everything is exhausted.
+- **No-cache API requests**: `cachePolicy = .reloadIgnoringLocalCacheData` + `Cache-Control: no-cache` on every fetch — ensures limit changes from admin console are reflected immediately
 
 ## API
 

@@ -303,8 +303,8 @@ Claude-Usage-Mac-Widget/
 7. **SettingsView (SwiftUI)** — Settings UI with credential hints and update banner
 8. **FloatingWidgetPanel** — Borderless NSPanel subclass
 9. **WidgetState Enum** — ok, needsSetup, sessionExpired, loading
-10. **WidgetViewData** — Data container for widget display
-11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, blue update dot
+10. **WidgetViewData** — Data container for widget display (includes multi-limit awareness fields)
+11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, other-limits note, blue update dot
 12. **WidgetPanelController** — Widget lifecycle, position/visibility persistence
 13. **AppDelegate** — App lifecycle, data fetching, 30s timer, 24h update checker, credential management
 14. **Data Models** — UsageResponse, UsageLimit (Codable)

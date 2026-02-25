@@ -316,6 +316,7 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 
 - [ ] Menu bar mode
 - [x] Launch at Login — enabled by default via `SMAppService`, toggleable in Settings
+- [x] In-app update notifications — blue dot indicator + one-click self-update via Settings
 - [ ] Optional usage history graph
 - [ ] Signed / notarized build
 - [ ] Homebrew formula

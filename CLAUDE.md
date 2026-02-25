@@ -27,19 +27,20 @@ After editing `ClaudeUsageApp.swift`, always rebuild and relaunch — there is n
 
 ## Architecture
 
-Everything lives in `ClaudeUsageApp.swift` (~1420 lines). Key sections in order:
+Everything lives in `ClaudeUsageApp.swift` (~1660 lines). Key sections in order:
 
 1. **Enums** — `MetricType`, `NumberDisplayStyle`, `ProgressIconStyle` define user-facing options
 2. **LoginItemManager** — `SMAppService`-based Launch at Login (macOS 13+ native API, no special permissions required)
-3. **Preferences** — Singleton wrapping `UserDefaults.standard` for all settings
-4. **SettingsView** — SwiftUI view hosted in an `NSWindowController`, with credential hints inline
-5. **FloatingWidgetPanel** — `NSPanel` subclass: borderless, floating, non-activating, all Spaces, draggable
-6. **WidgetState** — Enum: `.ok`, `.needsSetup`, `.sessionExpired`, `.loading`
-7. **WidgetView** — SwiftUI view with four states, circular progress ring, pace tracking, status messages, context menu (Settings/Refresh/Quit)
-8. **WidgetPanelController** — Manages panel lifecycle, saves/restores position via UserDefaults
-9. **AppDelegate** — The core: menubar setup, 30-second fetch timer, HTTP requests, retry logic, status calculation
-10. **Data Models** — `UsageResponse` and `UsageLimit` (Codable, maps to Claude API JSON)
-11. **Main Entry** — `@main` struct bootstraps `NSApplication` as `.accessory` (no dock icon)
+3. **UpdateChecker** — Fetches `VERSION` from GitHub raw, compares semver against local `CFBundleShortVersionString`, handles self-update (git pull → build.sh → relaunch)
+4. **Preferences** — Singleton wrapping `UserDefaults.standard` for all settings
+5. **SettingsView** — SwiftUI view hosted in an `NSWindowController`, with credential hints inline and update banner
+6. **FloatingWidgetPanel** — `NSPanel` subclass: borderless, floating, non-activating, all Spaces, draggable
+7. **WidgetState** — Enum: `.ok`, `.needsSetup`, `.sessionExpired`, `.loading`
+8. **WidgetView** — SwiftUI view with four states, circular progress ring, pace tracking, status messages, blue update dot, context menu (Settings/Refresh/Quit)
+9. **WidgetPanelController** — Manages panel lifecycle, saves/restores position via UserDefaults
+10. **AppDelegate** — The core: menubar setup, 30-second fetch timer, 24-hour update check timer, HTTP requests, retry logic, status calculation
+11. **Data Models** — `UsageResponse` and `UsageLimit` (Codable, maps to Claude API JSON)
+12. **Main Entry** — `@main` struct bootstraps `NSApplication` as `.accessory` (no dock icon)
 
 ## Key Patterns
 
@@ -76,7 +77,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 
 | File | Purpose |
 |------|---------|
-| `ClaudeUsageApp.swift` | Entire app source (~1420 lines) — edit this for all changes |
+| `ClaudeUsageApp.swift` | Entire app source (~1660 lines) — edit this for all changes |
 | `Info.plist` | Bundle config: `LSUIElement=true`, min macOS 13.0 |
 | `build.sh` | Build script (invokes `swiftc` + `generate-icon.sh`) |
 | `run.sh` | Kill existing + rebuild if needed + launch |
@@ -87,7 +88,8 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 | `DEVELOPMENT.md` | Developer guide — architecture, adding features, debugging |
 | `CLAUDE.md` | Claude Code guidance — this file |
 | `icon.svg` | Source icon for the app |
-| `assets/` | Screenshots and hero image for README |
+| `VERSION` | Version string for update checking — bumped only for material releases |
+| `assets/` | Widget screenshots for README |
 
 ## Logging
 

@@ -279,6 +279,7 @@ Claude-Usage-Mac-Widget/
 ├── generate-icon.sh        - App icon generator
 ├── create-dmg.sh           - DMG packaging script
 ├── icon.svg                - Source icon
+├── VERSION                 - Version string for update checking (bumped per material release)
 ├── README.md               - User documentation
 ├── DEVELOPMENT.md          - This file
 ├── CLAUDE.md               - Claude Code guidance
@@ -296,17 +297,18 @@ Claude-Usage-Mac-Widget/
 1. **MetricType Enum** — Available metrics (5-hour, 7-day, Sonnet)
 2. **Display Style Enums** — NumberDisplayStyle, ProgressIconStyle
 3. **LoginItemManager** — Launch at Login via `SMAppService` (macOS 13+ native API)
-4. **Preferences Manager** — UserDefaults wrapper for all settings
-5. **SettingsWindowController** — NSWindowController for Settings
-6. **SettingsView (SwiftUI)** — Settings UI with credential hints
-7. **FloatingWidgetPanel** — Borderless NSPanel subclass
-8. **WidgetState Enum** — ok, needsSetup, sessionExpired, loading
-9. **WidgetViewData** — Data container for widget display
-10. **WidgetView (SwiftUI)** — Four-state widget with context menu and status messages
-11. **WidgetPanelController** — Widget lifecycle, position/visibility persistence
-12. **AppDelegate** — App lifecycle, data fetching, 30s timer, credential management
-13. **Data Models** — UsageResponse, UsageLimit (Codable)
-14. **Main Entry Point** — NSApplication bootstrap
+4. **UpdateChecker** — Fetches remote VERSION from GitHub, compares semver, handles self-update (git pull → build → relaunch)
+5. **Preferences Manager** — UserDefaults wrapper for all settings
+6. **SettingsWindowController** — NSWindowController for Settings
+7. **SettingsView (SwiftUI)** — Settings UI with credential hints and update banner
+8. **FloatingWidgetPanel** — Borderless NSPanel subclass
+9. **WidgetState Enum** — ok, needsSetup, sessionExpired, loading
+10. **WidgetViewData** — Data container for widget display
+11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, blue update dot
+12. **WidgetPanelController** — Widget lifecycle, position/visibility persistence
+13. **AppDelegate** — App lifecycle, data fetching, 30s timer, 24h update checker, credential management
+14. **Data Models** — UsageResponse, UsageLimit (Codable)
+15. **Main Entry Point** — NSApplication bootstrap
 
 ## Performance Considerations
 

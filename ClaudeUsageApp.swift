@@ -707,6 +707,7 @@ struct WidgetView: View {
                 Circle()
                     .fill(Color.blue)
                     .frame(width: 8, height: 8)
+                    .help("Update available — right-click → Settings to update")
                     .padding(8)
             }
         }

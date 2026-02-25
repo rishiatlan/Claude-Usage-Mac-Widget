@@ -27,7 +27,7 @@ After editing `ClaudeUsageApp.swift`, always rebuild and relaunch — there is n
 
 ## Architecture
 
-Everything lives in `ClaudeUsageApp.swift` (~1660 lines). Key sections in order:
+Everything lives in `ClaudeUsageApp.swift` (~1765 lines). Key sections in order:
 
 1. **Enums** — `MetricType`, `NumberDisplayStyle`, `ProgressIconStyle` define user-facing options
 2. **LoginItemManager** — `SMAppService`-based Launch at Login (macOS 13+ native API, no special permissions required)
@@ -79,7 +79,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 
 | File | Purpose |
 |------|---------|
-| `ClaudeUsageApp.swift` | Entire app source (~1660 lines) — edit this for all changes |
+| `ClaudeUsageApp.swift` | Entire app source (~1765 lines) — edit this for all changes |
 | `Info.plist` | Bundle config: `LSUIElement=true`, min macOS 13.0 |
 | `build.sh` | Build script (invokes `swiftc` + `generate-icon.sh`) |
 | `run.sh` | Kill existing + rebuild if needed + launch |

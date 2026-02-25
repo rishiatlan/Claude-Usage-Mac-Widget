@@ -285,7 +285,8 @@ Claude-Usage-Mac-Widget/
 ├── CLAUDE.md               - Claude Code guidance
 ├── assets/                 - Widget screenshots for README
 │   ├── widget-on-track.png - Widget screenshot (green state)
-│   └── widget-limit-reached.png - Widget screenshot (limit reached)
+│   ├── widget-still-usable.png - Widget screenshot (window full, still usable)
+│   └── widget-session-expired.png - Widget screenshot (session expired)
 └── build/                  - Build output directory
     └── ClaudeUsage.app/    - Built application bundle
 ```

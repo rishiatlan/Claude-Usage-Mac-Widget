@@ -5,7 +5,7 @@ A lightweight macOS desktop widget that shows your Claude usage in real time —
 <p align="center">
   <img src="assets/widget-on-track.png" width="180" alt="Widget — on track" />
   &nbsp;&nbsp;&nbsp;
-  <img src="assets/widget-limit-reached.png" width="180" alt="Widget — limit reached" />
+  <img src="assets/widget-still-usable.png" width="180" alt="Widget — still usable" />
   &nbsp;&nbsp;&nbsp;
   <img src="assets/widget-session-expired.png" width="180" alt="Widget — session expired" />
 </p>
@@ -43,7 +43,7 @@ No tab switching. No guesswork.
 </td>
 <td width="33%">
 
-<img src="assets/widget-limit-reached.png" width="160" alt="Widget showing limit reached" />
+<img src="assets/widget-still-usable.png" width="160" alt="Widget showing still usable" />
 
 </td>
 <td width="33%">
@@ -54,7 +54,7 @@ No tab switching. No guesswork.
 </tr>
 <tr>
 <td align="center"><em>On track — plenty of room</em></td>
-<td align="center"><em>Window full — other limits shown</em></td>
+<td align="center"><em>Window full — still usable</em></td>
 <td align="center"><em>Session expired — re-authenticate</em></td>
 </tr>
 </table>

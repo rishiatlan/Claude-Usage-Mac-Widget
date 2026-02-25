@@ -10,6 +10,14 @@ enum MetricType: String, CaseIterable {
     case sevenDaySonnet = "7-day Limit (Sonnet)"
 
     var displayName: String { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .fiveHour: return "5h window"
+        case .sevenDay: return "7d window"
+        case .sevenDaySonnet: return "Sonnet 7d"
+        }
+    }
 }
 
 // MARK: - Display Style Enums
@@ -605,6 +613,7 @@ struct WidgetViewData {
     let expectedUsage: Double?
     let resetTimeString: String
     let metricName: String
+    let metricShortLabel: String
     let status: AppDelegate.UsageStatus
     /// When selected metric is at 100%, shows other limits that still have capacity (e.g., "7d: 34%")
     let otherLimitsNote: String?
@@ -705,12 +714,12 @@ struct WidgetView: View {
                         .lineLimit(1)
                 }
 
-                Text("Resets \(data.resetTimeString)")
+                Text("\(data.metricShortLabel) resets \(data.resetTimeString)")
                     .font(.system(size: 8))
                     .foregroundColor(.secondary)
             } else {
                 // Normal state — show reset time, status, and pace
-                Text("Resets \(data.resetTimeString)")
+                Text("\(data.metricShortLabel) resets \(data.resetTimeString)")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
@@ -1248,6 +1257,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             expectedUsage: expectedUsage,
             resetTimeString: resetTimeString,
             metricName: name,
+            metricShortLabel: metric.shortLabel,
             status: status,
             otherLimitsNote: otherLimitsNote,
             allLimitsExhausted: allLimitsExhausted

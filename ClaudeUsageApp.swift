@@ -606,6 +606,10 @@ struct WidgetViewData {
     let resetTimeString: String
     let metricName: String
     let status: AppDelegate.UsageStatus
+    /// When selected metric is at 100%, shows other limits that still have capacity (e.g., "7d: 34%")
+    let otherLimitsNote: String?
+    /// True only when ALL metrics are at or near 100% — the user is actually blocked
+    let allLimitsExhausted: Bool
 }
 
 enum WidgetState {
@@ -680,6 +684,13 @@ struct WidgetView: View {
             Text(statusMessage(data))
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(statusColor(data.status))
+
+            if let note = data.otherLimitsNote, data.utilization >= 95 {
+                Text(note)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(.blue.opacity(0.8))
+                    .lineLimit(1)
+            }
 
             if let expected = data.expectedUsage {
                 HStack(spacing: 4) {
@@ -792,7 +803,11 @@ struct WidgetView: View {
 
     func statusMessage(_ data: WidgetViewData) -> String {
         if data.utilization >= 100 {
-            return "Limit reached — wait for reset"
+            if data.allLimitsExhausted {
+                return "All limits reached — wait for reset"
+            }
+            // This specific window is full, but others have room
+            return "Window full — still available"
         }
         switch data.status {
         case .onTrack:
@@ -1172,12 +1187,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             resetTimeString = "unknown"
         }
 
+        // When selected metric is at/near 100%, check if other limits still have capacity
+        var otherLimitsNote: String? = nil
+        var allLimitsExhausted = false
+        if utilization >= 95 {
+            var otherParts: [String] = []
+            var allHigh = true
+            let limits: [(String, UsageLimit?)] = [
+                ("5h", data.five_hour),
+                ("7d", data.seven_day),
+                ("sonnet", data.seven_day_sonnet),
+                ("opus", data.seven_day_opus),
+            ]
+            for (label, limit) in limits {
+                guard let l = limit else { continue }
+                // Skip the metric we're already showing
+                if (metric == .fiveHour && label == "5h") ||
+                   (metric == .sevenDay && label == "7d") ||
+                   (metric == .sevenDaySonnet && label == "sonnet") { continue }
+                if l.utilization < 90 {
+                    otherParts.append("\(label): \(Int(l.utilization))%")
+                    allHigh = false
+                }
+            }
+            if !otherParts.isEmpty {
+                otherLimitsNote = otherParts.joined(separator: "  ")
+            }
+            allLimitsExhausted = allHigh && otherParts.isEmpty
+        }
+
         return WidgetViewData(
             utilization: utilization,
             expectedUsage: expectedUsage,
             resetTimeString: resetTimeString,
             metricName: name,
-            status: status
+            status: status,
+            otherLimitsNote: otherLimitsNote,
+            allLimitsExhausted: allLimitsExhausted
         )
     }
 
@@ -1344,12 +1390,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let decoder = JSONDecoder()
                 let usageData = try decoder.decode(UsageResponse.self, from: data)
 
+                // Build diagnostic string with all limit values
+                var parts: [String] = []
+                if let h = usageData.five_hour {
+                    parts.append("5h:\(String(format: "%.1f", h.utilization))%")
+                }
+                if let d = usageData.seven_day {
+                    parts.append("7d:\(String(format: "%.1f", d.utilization))%")
+                }
+                if let s = usageData.seven_day_sonnet {
+                    parts.append("sonnet:\(String(format: "%.1f", s.utilization))%")
+                }
+                if let o = usageData.seven_day_opus {
+                    parts.append("opus:\(String(format: "%.1f", o.utilization))%")
+                }
+                if let e = usageData.extra_usage {
+                    parts.append("extra:\(String(format: "%.1f", e.utilization))%")
+                }
+                let summary = parts.isEmpty ? "no limits" : parts.joined(separator: " | ")
+
                 DispatchQueue.main.async {
                     self.consecutiveFailures = 0
                     self.isSessionExpired = false
                     self.usageData = usageData
                     self.updateMenuBarIcon()
-                    self.addLog("Fetch OK")
+                    self.addLog("Fetch OK — \(summary)")
                 }
             } catch {
                 let body = String(data: data, encoding: .utf8) ?? "<binary>"

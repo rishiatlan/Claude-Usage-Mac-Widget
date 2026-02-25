@@ -58,6 +58,165 @@ class LoginItemManager {
     }
 }
 
+// MARK: - Update Checker
+
+class UpdateChecker {
+    static let shared = UpdateChecker()
+    private let remoteVersionURL = "https://raw.githubusercontent.com/rishiatlan/Claude-Usage-Mac-Widget/main/VERSION"
+    private let defaults = UserDefaults.standard
+    private let lastCheckKey = "lastUpdateCheckDate"
+    private let dismissedVersionKey = "dismissedUpdateVersion"
+
+    /// True when a newer version is available on GitHub
+    var updateAvailable: Bool = false
+    /// The remote version string (e.g., "1.1")
+    var remoteVersion: String?
+    /// Whether an update is currently in progress
+    var isUpdating: Bool = false
+
+    var localVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+    }
+
+    /// Derives the git repo root from the running app's bundle path.
+    /// Expects: /path/to/repo/build/ClaudeUsage.app → /path/to/repo
+    var repoRoot: String? {
+        let bundlePath = Bundle.main.bundlePath // .../build/ClaudeUsage.app
+        let buildDir = (bundlePath as NSString).deletingLastPathComponent // .../build
+        let repoRoot = (buildDir as NSString).deletingLastPathComponent // .../repo
+        // Validate: build.sh should exist at repo root
+        if FileManager.default.fileExists(atPath: (repoRoot as NSString).appendingPathComponent("build.sh")) {
+            return repoRoot
+        }
+        return nil
+    }
+
+    /// Check interval: 24 hours
+    private let checkInterval: TimeInterval = 86400
+
+    /// Whether enough time has passed since last check
+    var shouldCheck: Bool {
+        guard let lastCheck = defaults.object(forKey: lastCheckKey) as? Date else { return true }
+        return Date().timeIntervalSince(lastCheck) >= checkInterval
+    }
+
+    /// Fetch remote VERSION and compare against local. Calls completion on main thread.
+    func checkForUpdate(completion: (() -> Void)? = nil) {
+        guard let url = URL(string: remoteVersionURL) else {
+            completion?()
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 10
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            defer {
+                DispatchQueue.main.async { completion?() }
+            }
+
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let remote = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !remote.isEmpty else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.defaults.set(Date(), forKey: self.lastCheckKey)
+                self.remoteVersion = remote
+                self.updateAvailable = self.isNewer(remote: remote, local: self.localVersion)
+            }
+        }.resume()
+    }
+
+    /// Simple version comparison: "1.1" > "1.0", "2.0" > "1.9", etc.
+    private func isNewer(remote: String, local: String) -> Bool {
+        let r = remote.split(separator: ".").compactMap { Int($0) }
+        let l = local.split(separator: ".").compactMap { Int($0) }
+        let count = max(r.count, l.count)
+        for i in 0..<count {
+            let rv = i < r.count ? r[i] : 0
+            let lv = i < l.count ? l[i] : 0
+            if rv > lv { return true }
+            if rv < lv { return false }
+        }
+        return false
+    }
+
+    /// Perform self-update: git pull → build.sh → relaunch
+    func performUpdate(log: @escaping (String) -> Void, completion: @escaping (Bool, String) -> Void) {
+        guard let repoRoot = repoRoot else {
+            completion(false, "Cannot locate git repo. Run from the cloned repo's build/ directory.")
+            return
+        }
+
+        isUpdating = true
+        log("Starting update...")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // Step 1: git pull
+            log("Pulling latest from GitHub...")
+            let (pullOk, pullOutput) = self?.runShell("cd \"\(repoRoot)\" && git pull origin main 2>&1") ?? (false, "")
+            if !pullOk {
+                DispatchQueue.main.async {
+                    self?.isUpdating = false
+                    completion(false, "git pull failed: \(pullOutput)")
+                }
+                return
+            }
+            log("Pull complete")
+
+            // Step 2: build
+            log("Building new version...")
+            let (buildOk, buildOutput) = self?.runShell("cd \"\(repoRoot)\" && ./build.sh 2>&1") ?? (false, "")
+            if !buildOk || !buildOutput.contains("Build successful") {
+                DispatchQueue.main.async {
+                    self?.isUpdating = false
+                    completion(false, "Build failed: \(String(buildOutput.suffix(200)))")
+                }
+                return
+            }
+            log("Build complete — relaunching...")
+
+            // Step 3: relaunch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let appPath = repoRoot + "/build/ClaudeUsage.app"
+                let url = URL(fileURLWithPath: appPath)
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                    if let error = error {
+                        self?.isUpdating = false
+                        completion(false, "Relaunch failed: \(error.localizedDescription)")
+                    } else {
+                        // New instance launched — terminate this one
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            NSApplication.shared.terminate(nil)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func runShell(_ command: String) -> (Bool, String) {
+        let process = Process()
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.launchPath = "/bin/zsh"
+        process.arguments = ["-c", command]
+        process.launch()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return (process.terminationStatus == 0, output)
+    }
+}
+
 // MARK: - Preferences Manager
 
 class Preferences {
@@ -176,6 +335,8 @@ struct SettingsView: View {
     @State private var showStatusEmoji: Bool = Preferences.shared.showStatusEmoji
     @State private var launchAtLogin: Bool = LoginItemManager.shared.isLoginItemEnabled
     @State private var logText: String = ""
+    @State private var updateStatus: String = ""
+    @State private var isUpdating: Bool = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -192,6 +353,50 @@ struct SettingsView: View {
     var settingsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if UpdateChecker.shared.updateAvailable, let remote = UpdateChecker.shared.remoteVersion {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.white)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Update available: v\(remote)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                            if !updateStatus.isEmpty {
+                                Text(updateStatus)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                        }
+                        Spacer()
+                        if isUpdating {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .progressViewStyle(.circular)
+                        } else {
+                            Button("Update Now") {
+                                isUpdating = true
+                                updateStatus = "Starting..."
+                                UpdateChecker.shared.performUpdate(
+                                    log: { msg in
+                                        DispatchQueue.main.async { updateStatus = msg }
+                                    },
+                                    completion: { success, message in
+                                        DispatchQueue.main.async {
+                                            isUpdating = false
+                                            updateStatus = success ? "Done!" : message
+                                        }
+                                    }
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                        }
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue))
+                    .padding(.bottom, 4)
+                }
+
                 Text("Claude Usage Settings")
                     .font(.title2)
                     .fontWeight(.bold)
@@ -396,6 +601,7 @@ enum WidgetState {
 struct WidgetView: View {
     let data: WidgetViewData?
     let state: WidgetState
+    var updateAvailable: Bool = false
     var onSettings: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onQuit: (() -> Void)? = nil
@@ -477,6 +683,14 @@ struct WidgetView: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
+        .overlay(alignment: .topTrailing) {
+            if updateAvailable {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 8, height: 8)
+                    .padding(8)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -631,6 +845,7 @@ class WidgetPanelController {
         hostingView.rootView = WidgetView(
             data: data,
             state: state,
+            updateAvailable: UpdateChecker.shared.updateAvailable,
             onSettings: onSettings,
             onRefresh: onRefresh,
             onQuit: onQuit
@@ -665,6 +880,7 @@ class WidgetPanelController {
         let widgetView = WidgetView(
             data: nil,
             state: .loading,
+            updateAvailable: UpdateChecker.shared.updateAvailable,
             onSettings: onSettings,
             onRefresh: onRefresh,
             onQuit: onQuit
@@ -701,6 +917,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var isSessionExpired: Bool = false
     let maxRetries = 3
     let maxLogEntries = 50
+    var updateCheckTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         addLog("App launched")
@@ -753,6 +970,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             LoginItemManager.shared.setLoginItemEnabled(true)
             Preferences.shared.launchAtLoginConfigured = true
             addLog("Launch at Login enabled by default")
+        }
+
+        // Check for updates on launch (if 24h since last check) and every 24 hours
+        if UpdateChecker.shared.shouldCheck {
+            UpdateChecker.shared.checkForUpdate { [weak self] in
+                if UpdateChecker.shared.updateAvailable {
+                    self?.addLog("Update available: v\(UpdateChecker.shared.remoteVersion ?? "?")")
+                    self?.widgetController.updateContent(with: self?.currentWidgetData())
+                }
+            }
+        }
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            UpdateChecker.shared.checkForUpdate {
+                if UpdateChecker.shared.updateAvailable {
+                    self?.addLog("Update available: v\(UpdateChecker.shared.remoteVersion ?? "?")")
+                    self?.widgetController.updateContent(with: self?.currentWidgetData())
+                }
+            }
         }
     }
 
@@ -1019,8 +1254,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 15
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.addValue("sessionKey=\(sessionKey)", forHTTPHeaderField: "Cookie")
         request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.addValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0", forHTTPHeaderField: "User-Agent")
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in

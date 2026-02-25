@@ -103,6 +103,7 @@ class UpdateChecker {
     /// Fetch remote VERSION and compare against local. Calls completion on main thread.
     func checkForUpdate(completion: (() -> Void)? = nil) {
         guard let url = URL(string: remoteVersionURL) else {
+            print("UpdateChecker: invalid URL")
             completion?()
             return
         }
@@ -111,6 +112,7 @@ class UpdateChecker {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 10
 
+        print("UpdateChecker: checking \(remoteVersionURL) (local: \(localVersion))")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
 
@@ -118,18 +120,35 @@ class UpdateChecker {
                 DispatchQueue.main.async { completion?() }
             }
 
-            guard let data = data,
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let remote = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !remote.isEmpty else {
+            if let error = error {
+                print("UpdateChecker: network error: \(error.localizedDescription)")
                 return
             }
+
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse else {
+                print("UpdateChecker: no data or response")
+                return
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                print("UpdateChecker: HTTP \(httpResponse.statusCode)")
+                return
+            }
+
+            guard let remote = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !remote.isEmpty else {
+                print("UpdateChecker: empty or unreadable response")
+                return
+            }
+
+            let newer = self.isNewer(remote: remote, local: self.localVersion)
+            print("UpdateChecker: remote=\(remote) local=\(self.localVersion) newer=\(newer)")
 
             DispatchQueue.main.async {
                 self.defaults.set(Date(), forKey: self.lastCheckKey)
                 self.remoteVersion = remote
-                self.updateAvailable = self.isNewer(remote: remote, local: self.localVersion)
+                self.updateAvailable = newer
             }
         }.resume()
     }

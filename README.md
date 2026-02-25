@@ -3,9 +3,11 @@
 A lightweight macOS desktop widget that shows your Claude usage in real time — with pace tracking and reset countdown.
 
 <p align="center">
-  <img src="assets/widget-on-track.png" width="200" alt="Widget — on track" />
+  <img src="assets/widget-on-track.png" width="180" alt="Widget — on track" />
   &nbsp;&nbsp;&nbsp;
-  <img src="assets/widget-limit-reached.png" width="200" alt="Widget — limit reached" />
+  <img src="assets/widget-limit-reached.png" width="180" alt="Widget — limit reached" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/widget-session-expired.png" width="180" alt="Widget — session expired" />
 </p>
 
 <p align="center">
@@ -34,20 +36,26 @@ No tab switching. No guesswork.
 
 <table>
 <tr>
-<td width="50%">
+<td width="33%">
 
-<img src="assets/widget-on-track.png" width="180" alt="Widget showing on-track status" />
+<img src="assets/widget-on-track.png" width="160" alt="Widget showing on-track status" />
 
 </td>
-<td width="50%">
+<td width="33%">
 
-<img src="assets/widget-limit-reached.png" width="180" alt="Widget showing limit reached" />
+<img src="assets/widget-limit-reached.png" width="160" alt="Widget showing limit reached" />
+
+</td>
+<td width="33%">
+
+<img src="assets/widget-session-expired.png" width="160" alt="Widget showing session expired" />
 
 </td>
 </tr>
 <tr>
 <td align="center"><em>On track — plenty of room</em></td>
 <td align="center"><em>Limit reached — wait for reset</em></td>
+<td align="center"><em>Session expired — re-authenticate</em></td>
 </tr>
 </table>
 

@@ -687,18 +687,18 @@ struct WidgetView: View {
 
                 VStack(spacing: 1) {
                     Text("\(Int(data.utilization))%")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     Text(data.metricName)
-                        .font(.system(size: 8, weight: .medium))
+                        .font(.system(size: 7, weight: .medium))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
-            .frame(width: 76, height: 76)
+            .frame(width: 68, height: 68)
 
-            // When one window is full but Claude still works — show green "Still usable" badge
-            if data.utilization >= 95 && !data.allLimitsExhausted && data.otherLimitsNote != nil {
+            // When one window is at 100% but Claude still works — show green "Still usable" badge
+            if data.utilization >= 100 && !data.allLimitsExhausted && data.otherLimitsNote != nil {
                 HStack(spacing: 3) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 9))
@@ -727,7 +727,7 @@ struct WidgetView: View {
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(ringColor(data))
 
-                if let expected = data.expectedUsage, data.utilization < 95 {
+                if let expected = data.expectedUsage {
                     HStack(spacing: 4) {
                         Circle()
                             .fill(statusColor(data.status))

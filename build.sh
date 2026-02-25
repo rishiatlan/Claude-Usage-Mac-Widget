@@ -33,6 +33,7 @@ swiftc ClaudeUsageApp.swift \
     -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" \
     -framework Cocoa \
     -framework SwiftUI \
+    -framework Security \
     -parse-as-library
 
 if [ $? -eq 0 ]; then

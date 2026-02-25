@@ -11,14 +11,17 @@ A macOS floating desktop widget built with Swift and SwiftUI that monitors Claud
 ```
 ClaudeUsageApp.swift
 ├── MetricType (enum)              - Available metrics to track
-├── Preferences (singleton)        - UserDefaults wrapper for settings
+├── LoginItemManager               - SMAppService-based Launch at Login
+├── UpdateChecker                  - Version check + self-update (locked-down Process API)
+├── KeychainHelper                 - Secure session key storage (macOS Keychain)
+├── Preferences (singleton)        - Keychain (session key) + UserDefaults (other settings)
 ├── SettingsWindowController       - Settings window management
-├── SettingsView (SwiftUI)         - Settings UI with credential guidance
+├── SettingsView (SwiftUI)         - Settings UI with SecureField + credential guidance
 ├── FloatingWidgetPanel (NSPanel)  - Borderless, always-on-top, all-Spaces widget
 ├── WidgetState (enum)             - ok, needsSetup, sessionExpired, loading
 ├── WidgetView (SwiftUI)           - Four-state widget UI with context menu
 ├── WidgetPanelController          - Widget lifecycle, position persistence
-└── AppDelegate                    - Data fetching, timer, credential management
+└── AppDelegate                    - Data fetching, timer, jitter/cooldown, credential management
 ```
 
 ### Data Flow
@@ -36,8 +39,9 @@ ClaudeUsageApp.swift
 ### Preferences Storage
 
 ```swift
-// Session key and selected metric stored in UserDefaults
+// Session key stored in macOS Keychain (with one-time migration from UserDefaults)
 Preferences.shared.sessionKey: String?
+// Other settings in UserDefaults
 Preferences.shared.selectedMetric: MetricType
 ```
 
@@ -124,6 +128,7 @@ swiftc ClaudeUsageApp.swift \
   -o build/ClaudeUsage.app/Contents/MacOS/ClaudeUsage \
   -framework Cocoa \
   -framework SwiftUI \
+  -framework Security \
   -parse-as-library
 ```
 
@@ -158,29 +163,21 @@ case .newMetric:
     return (limit.utilization, limit.resets_at, "Display Name")
 ```
 
-3. **Add menu item in showMenu():**
+3. **Add shortLabel for the new metric:**
 ```swift
-if let newMetric = data.new_metric {
-    let item = NSMenuItem(
-        title: "\(formatUtilization(newMetric.utilization))% Display Name",
-        action: currentMetric == .newMetric ? nil : #selector(switchToNewMetric),
-        keyEquivalent: ""
-    )
-    if currentMetric == .newMetric {
-        item.state = .on
+var shortLabel: String {
+    switch self {
+    case .newMetric: return "new"
     }
-    menu.addItem(item)
-    menu.addItem(NSMenuItem(title: "  Resets \(formatRelativeDate(newMetric.resets_at))", action: nil, keyEquivalent: ""))
-    menu.addItem(NSMenuItem.separator())
 }
 ```
 
-4. **Add switch action:**
+4. **Add to other-limits computation in currentWidgetData():**
 ```swift
-@objc func switchToNewMetric() {
-    Preferences.shared.selectedMetric = .newMetric
-    updateMenuBarIcon()
-}
+let limits: [(String, UsageLimit?)] = [
+    // ... existing entries ...
+    ("new", data.new_metric),
+]
 ```
 
 ### Changing Refresh Interval
@@ -194,13 +191,6 @@ timer = Timer.scheduledTimer(
     self?.fetchUsageData()
 }
 ```
-
-### Modifying Icon Logic
-
-Edit `updateMenuBarIcon()` function to change:
-- Icon selection logic
-- Pace calculation thresholds
-- Fallback behavior
 
 ### Customizing UI
 
@@ -234,9 +224,9 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 ### Common Issues
 
 **Widget not updating:**
-- Check `updateMenuBarIcon()` is being called (also updates widget)
+- Check `updateWidget()` is being called after data fetch
 - Verify `usageData` is populated
-- Check date parsing in `formatRelativeDate()`
+- Check date parsing in `formatResetTime()`
 
 **Widget shows "Session Expired":**
 - API returned HTTP 401 or 403 with a JSON response (real auth error, not Cloudflare)
@@ -271,7 +261,7 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 
 ```
 Claude-Usage-Mac-Widget/
-├── ClaudeUsageApp.swift    - Main application code (single file, ~1420 lines)
+├── ClaudeUsageApp.swift    - Main application code (single file, ~1490 lines)
 ├── Info.plist              - App bundle configuration (LSUIElement = true)
 ├── build.sh                - Build script
 ├── run.sh                  - Run script with environment check
@@ -295,19 +285,19 @@ Claude-Usage-Mac-Widget/
 
 ### Sections in ClaudeUsageApp.swift
 
-1. **MetricType Enum** — Available metrics (5-hour, 7-day, Sonnet)
-2. **Display Style Enums** — NumberDisplayStyle, ProgressIconStyle
-3. **LoginItemManager** — Launch at Login via `SMAppService` (macOS 13+ native API)
-4. **UpdateChecker** — Fetches remote VERSION from GitHub, compares semver, handles self-update (git pull → build → relaunch)
-5. **Preferences Manager** — UserDefaults wrapper for all settings
+1. **MetricType Enum** — Available metrics (5-hour, 7-day, Sonnet) with display names and short labels
+2. **LoginItemManager** — Launch at Login via `SMAppService` (macOS 13+ native API)
+3. **UpdateChecker** — Fetches remote VERSION from GitHub, compares semver, handles self-update via locked-down `Process` API (no shell)
+4. **KeychainHelper** — Secure session key storage using macOS Keychain (`SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`)
+5. **Preferences Manager** — Session key in Keychain (with migration from UserDefaults), other settings in UserDefaults
 6. **SettingsWindowController** — NSWindowController for Settings
-7. **SettingsView (SwiftUI)** — Settings UI with credential hints and update banner
+7. **SettingsView (SwiftUI)** — Settings UI with SecureField for session key, credential hints, and update banner
 8. **FloatingWidgetPanel** — Borderless NSPanel subclass
 9. **WidgetState Enum** — ok, needsSetup, sessionExpired, loading
 10. **WidgetViewData** — Data container for widget display (includes multi-limit awareness fields)
-11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, other-limits note, blue update dot
+11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, other-limits display, blue update dot
 12. **WidgetPanelController** — Widget lifecycle, position/visibility persistence
-13. **AppDelegate** — App lifecycle, data fetching, 30s timer, 24h update checker, credential management
+13. **AppDelegate** — App lifecycle, data fetching, 30s timer, 24h update checker, jitter/cooldown, credential management
 14. **Data Models** — UsageResponse, UsageLimit (Codable)
 15. **Main Entry Point** — NSApplication bootstrap
 
@@ -320,16 +310,17 @@ Claude-Usage-Mac-Widget/
 
 ## Security Notes
 
-- Session key stored in UserDefaults (not encrypted)
+- Session key stored in macOS Keychain (`kSecAttrAccessibleWhenUnlocked`) — not in UserDefaults or plain text
+- One-time transparent migration from UserDefaults to Keychain on first launch after upgrade
+- Settings UI uses `SecureField` for session key input (masked)
 - No data sent to third parties
 - Only communicates with claude.ai API
 - Custom `User-Agent` header sent with all requests to reduce Cloudflare challenges
 - `setup.sh` uses masked input (`read -s`) — session key never echoed or logged
-- For production: Consider using Keychain for session key storage
+- UpdateChecker uses locked-down `Process` API — no shell, no string interpolation
 
 ## Future Enhancement Ideas
 
-- Keychain integration for secure session key storage
 - macOS notifications when approaching limits
 - Usage history tracking and charts
 - Multiple organization support

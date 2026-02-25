@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 import ServiceManagement
+import Security
 
 // MARK: - Metric Type Enum
 
@@ -18,29 +19,6 @@ enum MetricType: String, CaseIterable {
         case .sevenDaySonnet: return "Sonnet 7d"
         }
     }
-}
-
-// MARK: - Display Style Enums
-
-enum NumberDisplayStyle: String, CaseIterable {
-    case none = "None"
-    case percentage = "Percentage (42%)"
-    case threshold = "Threshold (42|85)"
-
-    var displayName: String { rawValue }
-}
-
-enum ProgressIconStyle: String, CaseIterable {
-    case none = "None"
-    case circle = "Circle (◕)"
-    case braille = "Braille (⣇)"
-    case barAscii = "Bar [===  ]"
-    case barBlocks = "Bar ▓▓░░░"
-    case barSquares = "Bar ■■□□□"
-    case barCircles = "Bar ●●○○○"
-    case barLines = "Bar ━━───"
-
-    var displayName: String { rawValue }
 }
 
 // MARK: - Login Item Manager
@@ -188,7 +166,7 @@ class UpdateChecker {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Step 1: git pull
             log("Pulling latest from GitHub...")
-            let (pullOk, pullOutput) = self?.runShell("cd \"\(repoRoot)\" && git pull origin main 2>&1") ?? (false, "")
+            let (pullOk, pullOutput) = self?.runGitPull(in: repoRoot) ?? (false, "")
             if !pullOk {
                 DispatchQueue.main.async {
                     self?.isUpdating = false
@@ -200,7 +178,7 @@ class UpdateChecker {
 
             // Step 2: build
             log("Building new version...")
-            let (buildOk, buildOutput) = self?.runShell("cd \"\(repoRoot)\" && ./build.sh 2>&1") ?? (false, "")
+            let (buildOk, buildOutput) = self?.runBuildScript(in: repoRoot) ?? (false, "")
             if !buildOk || !buildOutput.contains("Build successful") {
                 DispatchQueue.main.async {
                     self?.isUpdating = false
@@ -229,18 +207,90 @@ class UpdateChecker {
         }
     }
 
-    private func runShell(_ command: String) -> (Bool, String) {
+    /// Locked-down git pull — no shell, no string interpolation
+    private func runGitPull(in repoRoot: String) -> (Bool, String) {
         let process = Process()
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        process.launchPath = "/bin/zsh"
-        process.arguments = ["-c", command]
-        process.launch()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return (process.terminationStatus == 0, output)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["pull", "origin", "main"]
+        process.currentDirectoryURL = URL(fileURLWithPath: repoRoot)
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return (process.terminationStatus == 0, output)
+        } catch {
+            return (false, "Failed to launch git: \(error.localizedDescription)")
+        }
+    }
+
+    /// Locked-down build script — no shell, explicit path to build.sh
+    private func runBuildScript(in repoRoot: String) -> (Bool, String) {
+        let process = Process()
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        let buildScript = (repoRoot as NSString).appendingPathComponent("build.sh")
+        process.executableURL = URL(fileURLWithPath: buildScript)
+        process.currentDirectoryURL = URL(fileURLWithPath: repoRoot)
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return (process.terminationStatus == 0, output)
+        } catch {
+            return (false, "Failed to launch build.sh: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Keychain Helper
+
+class KeychainHelper {
+    static let shared = KeychainHelper()
+    private let service = "com.claude.usage"
+
+    func save(key: String, value: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+        delete(key: key)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
+        ]
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    func read(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8) else { return nil }
+        return string
+    }
+
+    @discardableResult
+    func delete(key: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }
 
@@ -250,17 +300,34 @@ class Preferences {
     static let shared = Preferences()
     private let defaults = UserDefaults.standard
 
-    private let sessionKeyKey = "claudeSessionKey"
+    private let sessionKeyKey = "claudeSessionKey" // legacy UserDefaults key (for migration)
+    private let keychainSessionAccount = "sessionKey"
     private let organizationIdKey = "claudeOrganizationId"
     private let metricTypeKey = "selectedMetricType"
-    private let numberDisplayStyleKey = "numberDisplayStyle"
-    private let progressIconStyleKey = "progressIconStyle"
-    private let showStatusEmojiKey = "showStatusEmoji"
     private let launchAtLoginConfiguredKey = "launchAtLoginConfigured"
 
     var sessionKey: String? {
-        get { defaults.string(forKey: sessionKeyKey) }
-        set { defaults.set(newValue, forKey: sessionKeyKey) }
+        get {
+            // Primary: read from Keychain
+            if let keychainValue = KeychainHelper.shared.read(key: keychainSessionAccount) {
+                return keychainValue
+            }
+            // Fallback: migrate from UserDefaults if present (one-time migration)
+            if let legacyValue = defaults.string(forKey: sessionKeyKey) {
+                _ = KeychainHelper.shared.save(key: keychainSessionAccount, value: legacyValue)
+                defaults.removeObject(forKey: sessionKeyKey)
+                return legacyValue
+            }
+            return nil
+        }
+        set {
+            if let value = newValue, !value.isEmpty {
+                _ = KeychainHelper.shared.save(key: keychainSessionAccount, value: value)
+            } else {
+                KeychainHelper.shared.delete(key: keychainSessionAccount)
+            }
+            defaults.removeObject(forKey: sessionKeyKey)
+        }
     }
 
     var organizationId: String? {
@@ -278,44 +345,6 @@ class Preferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: metricTypeKey)
-        }
-    }
-
-    var numberDisplayStyle: NumberDisplayStyle {
-        get {
-            if let rawValue = defaults.string(forKey: numberDisplayStyleKey),
-               let style = NumberDisplayStyle(rawValue: rawValue) {
-                return style
-            }
-            return .percentage // default to showing percentage
-        }
-        set {
-            defaults.set(newValue.rawValue, forKey: numberDisplayStyleKey)
-        }
-    }
-
-    var progressIconStyle: ProgressIconStyle {
-        get {
-            if let rawValue = defaults.string(forKey: progressIconStyleKey),
-               let style = ProgressIconStyle(rawValue: rawValue) {
-                return style
-            }
-            return .none
-        }
-        set {
-            defaults.set(newValue.rawValue, forKey: progressIconStyleKey)
-        }
-    }
-
-    var showStatusEmoji: Bool {
-        get {
-            if defaults.object(forKey: showStatusEmojiKey) == nil {
-                return true // default to showing emoji
-            }
-            return defaults.bool(forKey: showStatusEmojiKey)
-        }
-        set {
-            defaults.set(newValue, forKey: showStatusEmojiKey)
         }
     }
 
@@ -357,9 +386,6 @@ struct SettingsView: View {
     @State private var sessionKey: String = Preferences.shared.sessionKey ?? ""
     @State private var organizationId: String = Preferences.shared.organizationId ?? ""
     @State private var selectedMetric: MetricType = Preferences.shared.selectedMetric
-    @State private var numberDisplayStyle: NumberDisplayStyle = Preferences.shared.numberDisplayStyle
-    @State private var progressIconStyle: ProgressIconStyle = Preferences.shared.progressIconStyle
-    @State private var showStatusEmoji: Bool = Preferences.shared.showStatusEmoji
     @State private var launchAtLogin: Bool = LoginItemManager.shared.isLoginItemEnabled
     @State private var logText: String = ""
     @State private var updateStatus: String = ""
@@ -432,7 +458,7 @@ struct SettingsView: View {
                     Text("Session Key:")
                         .font(.headline)
 
-                    TextField("Enter your Claude session key", text: $sessionKey)
+                    SecureField("Enter your Claude session key", text: $sessionKey)
                         .textFieldStyle(.roundedBorder)
 
                     Text("Browser → DevTools (Cmd+Opt+I) → Application → Cookies → claude.ai → sessionKey")
@@ -472,46 +498,6 @@ struct SettingsView: View {
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Menu Bar Display")
-                        .font(.headline)
-
-                    HStack(alignment: .top, spacing: 30) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Number:")
-                                .font(.subheadline)
-                            Picker("", selection: $numberDisplayStyle) {
-                                ForEach(NumberDisplayStyle.allCases, id: \.self) { style in
-                                    Text(style.displayName).tag(style)
-                                }
-                            }
-                            .pickerStyle(.radioGroup)
-                            .labelsHidden()
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Progress Icon:")
-                                .font(.subheadline)
-                            Picker("", selection: $progressIconStyle) {
-                                ForEach(ProgressIconStyle.allCases, id: \.self) { style in
-                                    Text(style.displayName).tag(style)
-                                }
-                            }
-                            .pickerStyle(.radioGroup)
-                            .labelsHidden()
-                        }
-                    }
-
-                    Toggle("Show Status Emoji", isOn: $showStatusEmoji)
-                        .toggleStyle(.checkbox)
-
-                    Text("Status: ✳️ on track, 🚀 borderline, ⚠️ exceeding")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Divider()
-
                 Toggle("Launch at Login", isOn: $launchAtLogin)
                     .toggleStyle(.checkbox)
 
@@ -523,9 +509,6 @@ struct SettingsView: View {
                         Preferences.shared.sessionKey = sessionKey
                         Preferences.shared.organizationId = organizationId
                         Preferences.shared.selectedMetric = selectedMetric
-                        Preferences.shared.numberDisplayStyle = numberDisplayStyle
-                        Preferences.shared.progressIconStyle = progressIconStyle
-                        Preferences.shared.showStatusEmoji = showStatusEmoji
                         LoginItemManager.shared.setLoginItemEnabled(launchAtLogin)
 
                         NotificationCenter.default.post(name: .settingsChanged, object: nil)
@@ -736,6 +719,12 @@ struct WidgetView: View {
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
+                }
+
+                if let otherNote = data.otherLimitsNote {
+                    Text(otherNote)
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.7))
                 }
             }
         }
@@ -975,8 +964,6 @@ class WidgetPanelController {
 // MARK: - App Delegate
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem!
-    var menu: NSMenu!
     var usageData: UsageResponse?
     var timer: Timer?
     var settingsWindowController: SettingsWindowController?
@@ -985,6 +972,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Fetch reliability tracking
     var logEntries: [(Date, String)] = []
     var consecutiveFailures: Int = 0
+    var cloudflareConsecutiveFailures: Int = 0
+    var cloudflareCooldownUntil: Date? = nil
     var isSessionExpired: Bool = false
     let maxRetries = 3
     let maxLogEntries = 50
@@ -992,15 +981,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         addLog("App launched")
-
-        // Set up menubar icon (may be hidden on macOS 26+ but keep as fallback)
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
-            button.title = "⏱️"
-            button.action = #selector(showMenu)
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        }
-        menu = NSMenu()
 
         // Wire up widget callbacks
         widgetController.onSettings = { [weak self] in self?.openSettings() }
@@ -1065,122 +1045,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleSettingsChanged() {
         isSessionExpired = false  // Reset — user may have entered a new key
         consecutiveFailures = 0
+        cloudflareConsecutiveFailures = 0
+        cloudflareCooldownUntil = nil
         fetchUsageData()
-    }
-
-    @objc func showMenu() {
-        menu.removeAllItems()
-
-        let currentMetric = Preferences.shared.selectedMetric
-
-        if let data = usageData {
-            // 5-hour limit
-            if let fiveHour = data.five_hour {
-                let item = NSMenuItem(
-                    title: "\(formatUtilization(fiveHour.utilization))% 5-hour Limit",
-                    action: currentMetric == .fiveHour ? nil : #selector(switchToFiveHour),
-                    keyEquivalent: ""
-                )
-                if currentMetric == .fiveHour {
-                    item.state = .on
-                }
-                menu.addItem(item)
-                menu.addItem(NSMenuItem(title: "  t: \(metricDetailString(limit: fiveHour, metric: .fiveHour))", action: nil, keyEquivalent: ""))
-                menu.addItem(NSMenuItem.separator())
-            }
-
-            // 7-day limit (all models)
-            if let sevenDay = data.seven_day {
-                let item = NSMenuItem(
-                    title: "\(formatUtilization(sevenDay.utilization))% 7-day Limit (All Models)",
-                    action: currentMetric == .sevenDay ? nil : #selector(switchToSevenDay),
-                    keyEquivalent: ""
-                )
-                if currentMetric == .sevenDay {
-                    item.state = .on
-                }
-                menu.addItem(item)
-                menu.addItem(NSMenuItem(title: "  t: \(metricDetailString(limit: sevenDay, metric: .sevenDay))", action: nil, keyEquivalent: ""))
-                menu.addItem(NSMenuItem.separator())
-            }
-
-            // 7-day Sonnet
-            if let sevenDaySonnet = data.seven_day_sonnet {
-                let item = NSMenuItem(
-                    title: "\(formatUtilization(sevenDaySonnet.utilization))% 7-day Limit (Sonnet)",
-                    action: currentMetric == .sevenDaySonnet ? nil : #selector(switchToSevenDaySonnet),
-                    keyEquivalent: ""
-                )
-                if currentMetric == .sevenDaySonnet {
-                    item.state = .on
-                }
-                menu.addItem(item)
-                menu.addItem(NSMenuItem(title: "  t: \(metricDetailString(limit: sevenDaySonnet, metric: .sevenDaySonnet))", action: nil, keyEquivalent: ""))
-                menu.addItem(NSMenuItem.separator())
-            }
-
-            // 7-day Opus (if available)
-            if let sevenDayOpus = data.seven_day_opus {
-                menu.addItem(NSMenuItem(title: "\(formatUtilization(sevenDayOpus.utilization))% 7-day Limit (Opus)", action: nil, keyEquivalent: ""))
-                menu.addItem(NSMenuItem(title: "  t: \(metricDetailString(limit: sevenDayOpus, metric: .sevenDay))", action: nil, keyEquivalent: ""))
-                menu.addItem(NSMenuItem.separator())
-            }
-        } else {
-            menu.addItem(NSMenuItem(title: "Loading...", action: nil, keyEquivalent: ""))
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // Log section
-        let logItem = NSMenuItem(title: "Log", action: nil, keyEquivalent: "")
-        let logSubmenu = NSMenu()
-        if logEntries.isEmpty {
-            logSubmenu.addItem(NSMenuItem(title: "No entries", action: nil, keyEquivalent: ""))
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm:ss"
-            let recentLogs = logEntries.suffix(15)
-            for (date, message) in recentLogs {
-                let title = "\(formatter.string(from: date)) \(message)"
-                logSubmenu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
-            }
-        }
-        logItem.submenu = logSubmenu
-        menu.addItem(logItem)
-
-        menu.addItem(NSMenuItem.separator())
-        let widgetTitle = widgetController.isVisible ? "Hide Desktop Widget" : "Show Desktop Widget"
-        menu.addItem(NSMenuItem(title: widgetTitle, action: #selector(toggleWidget), keyEquivalent: "w"))
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "Refresh", action: #selector(refreshClicked), keyEquivalent: "r"))
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitClicked), keyEquivalent: "q"))
-
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
-    }
-
-    @objc func switchToFiveHour() {
-        Preferences.shared.selectedMetric = .fiveHour
-        updateMenuBarIcon()
-    }
-
-    func metricDetailString(limit: UsageLimit, metric: MetricType) -> String {
-        guard let resetDate = limit.resets_at else {
-            return "?%, —"
-        }
-        let expected = calculateExpectedUsage(resetDateString: resetDate, metric: metric)
-        let expectedStr = expected != nil ? formatUtilization(expected!) : "?"
-        return "\(expectedStr)%, \(formatResetTime(resetDate))"
-    }
-
-    @objc func switchToSevenDay() {
-        Preferences.shared.selectedMetric = .sevenDay
-        updateMenuBarIcon()
-    }
-
-    @objc func switchToSevenDaySonnet() {
-        Preferences.shared.selectedMetric = .sevenDaySonnet
-        updateMenuBarIcon()
     }
 
     @objc func openSettings() {
@@ -1190,18 +1057,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc func refreshClicked() {
-        fetchUsageData()
-    }
-
-    @objc func quitClicked() {
-        NSApplication.shared.terminate(self)
-    }
-
-    @objc func toggleWidget() {
-        widgetController.toggle(with: currentWidgetData())
     }
 
     func currentWidgetData() -> WidgetViewData? {
@@ -1223,32 +1078,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             resetTimeString = "unknown"
         }
 
-        // When selected metric is at/near 100%, check if other limits still have capacity
+        // Always compute other limits so the user sees the full picture
         var otherLimitsNote: String? = nil
         var allLimitsExhausted = false
+        var otherParts: [String] = []
+        var allHigh = true
+        let limits: [(String, UsageLimit?)] = [
+            ("5h", data.five_hour),
+            ("7d", data.seven_day),
+            ("sonnet", data.seven_day_sonnet),
+            ("opus", data.seven_day_opus),
+        ]
+        for (label, limit) in limits {
+            guard let l = limit else { continue }
+            // Skip the metric we're already showing
+            if (metric == .fiveHour && label == "5h") ||
+               (metric == .sevenDay && label == "7d") ||
+               (metric == .sevenDaySonnet && label == "sonnet") { continue }
+            otherParts.append("\(label): \(Int(l.utilization))%")
+            if l.utilization < 90 {
+                allHigh = false
+            }
+        }
+        if !otherParts.isEmpty {
+            otherLimitsNote = otherParts.joined(separator: "  ")
+        }
+        // Only declare "all exhausted" when selected metric is actually near/at 100%
         if utilization >= 95 {
-            var otherParts: [String] = []
-            var allHigh = true
-            let limits: [(String, UsageLimit?)] = [
-                ("5h", data.five_hour),
-                ("7d", data.seven_day),
-                ("sonnet", data.seven_day_sonnet),
-                ("opus", data.seven_day_opus),
-            ]
-            for (label, limit) in limits {
-                guard let l = limit else { continue }
-                // Skip the metric we're already showing
-                if (metric == .fiveHour && label == "5h") ||
-                   (metric == .sevenDay && label == "7d") ||
-                   (metric == .sevenDaySonnet && label == "sonnet") { continue }
-                if l.utilization < 90 {
-                    otherParts.append("\(label): \(Int(l.utilization))%")
-                    allHigh = false
-                }
-            }
-            if !otherParts.isEmpty {
-                otherLimitsNote = otherParts.joined(separator: "  ")
-            }
             allLimitsExhausted = allHigh && otherParts.isEmpty
         }
 
@@ -1311,6 +1167,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Skip polling if in Cloudflare cooldown
+        if retryCount == 0, let cooldownUntil = cloudflareCooldownUntil {
+            if Date() < cooldownUntil {
+                let remaining = Int(cooldownUntil.timeIntervalSinceNow)
+                addLog("Cloudflare cooldown active — \(remaining)s remaining, skipping fetch")
+                return
+            } else {
+                cloudflareCooldownUntil = nil
+                addLog("Cloudflare cooldown expired — resuming polling")
+            }
+        }
+
         var sessionKey = Preferences.shared.sessionKey
         var organizationId = Preferences.shared.organizationId
 
@@ -1327,7 +1195,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addLog(msg)
             DispatchQueue.main.async {
                 self.consecutiveFailures += 1
-                self.statusItem.button?.title = "❌"
+
                 if self.widgetController.isVisible {
                     self.widgetController.updateContent(with: nil, state: .needsSetup)
                 }
@@ -1340,7 +1208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addLog(msg)
             DispatchQueue.main.async {
                 self.consecutiveFailures += 1
-                self.statusItem.button?.title = "❌"
+
                 if self.widgetController.isVisible {
                     self.widgetController.updateContent(with: nil, state: .needsSetup)
                 }
@@ -1397,14 +1265,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     if isCloudflareChallenge {
                         // Cloudflare is blocking the request — treat as transient network error
                         self.addLog("Cloudflare challenge detected (HTTP \(httpResponse.statusCode)) — retrying")
-                        self.handleFetchFailure(retryCount: retryCount)
+                        self.handleFetchFailure(retryCount: retryCount, isCloudflare: true)
                     } else {
                         // Real auth error — session expired
                         self.addLog("Session expired (HTTP \(httpResponse.statusCode))")
                         DispatchQueue.main.async {
                             self.consecutiveFailures += 1
                             self.isSessionExpired = true
-                            self.statusItem.button?.title = "🔑"
                             if self.widgetController.isVisible {
                                 self.widgetController.updateContent(with: nil, state: .sessionExpired)
                             }
@@ -1448,9 +1315,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 DispatchQueue.main.async {
                     self.consecutiveFailures = 0
+                    self.cloudflareConsecutiveFailures = 0
+                    self.cloudflareCooldownUntil = nil
                     self.isSessionExpired = false
                     self.usageData = usageData
-                    self.updateMenuBarIcon()
+                    self.updateWidget()
                     self.addLog("Fetch OK — \(summary)")
                 }
             } catch {
@@ -1464,11 +1333,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         task.resume()
     }
 
-    private func handleFetchFailure(retryCount: Int) {
+    private func handleFetchFailure(retryCount: Int, isCloudflare: Bool = false) {
         if retryCount < maxRetries {
-            let delay = pow(2.0, Double(retryCount)) // 1s, 2s, 4s
-            addLog("Retrying in \(Int(delay))s (attempt \(retryCount + 1)/\(maxRetries))")
-            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            let baseDelay = pow(2.0, Double(retryCount)) // 1, 2, 4
+            let jitter = baseDelay * (0.5 + Double.random(in: 0...1.0)) // 0.5-2, 1-4, 2-8
+            addLog("Retrying in \(String(format: "%.1f", jitter))s (attempt \(retryCount + 1)/\(maxRetries))")
+            DispatchQueue.global().asyncAfter(deadline: .now() + jitter) { [weak self] in
                 self?.fetchUsageData(retryCount: retryCount + 1)
             }
         } else {
@@ -1476,8 +1346,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 self.consecutiveFailures += 1
                 self.addLog("Failed after \(self.maxRetries) retries (consecutive: \(self.consecutiveFailures))")
-                if self.consecutiveFailures >= 3 {
-                    self.statusItem.button?.title = "❌"
+
+                if isCloudflare {
+                    self.cloudflareConsecutiveFailures += 1
+                    if self.cloudflareConsecutiveFailures >= 3 {
+                        let cooldownDuration: TimeInterval = 300 // 5 minutes
+                        self.cloudflareCooldownUntil = Date().addingTimeInterval(cooldownDuration)
+                        self.addLog("Cloudflare cooldown: pausing for 5 min after \(self.cloudflareConsecutiveFailures) consecutive CF failures")
+                    }
                 }
             }
         }
@@ -1497,78 +1373,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func updateMenuBarIcon() {
-        guard let data = usageData,
-              let button = statusItem.button else { return }
-
-        let metric = Preferences.shared.selectedMetric
-        let numberDisplayStyle = Preferences.shared.numberDisplayStyle
-        let progressIconStyle = Preferences.shared.progressIconStyle
-        let showStatusEmoji = Preferences.shared.showStatusEmoji
-
-        guard let (utilization, resetDateString, _) = getSelectedMetricData(from: data, metric: metric) else {
-            button.title = "❌"
-            return
-        }
-
-        // Calculate status and expected usage
-        let status: UsageStatus
-        let expectedUsage: Double?
-        if let resetDate = resetDateString {
-            status = calculateStatus(utilization: utilization, resetDateString: resetDate, metric: metric)
-            expectedUsage = calculateExpectedUsage(resetDateString: resetDate, metric: metric)
-        } else {
-            status = utilization >= 80 ? .exceeding : (utilization >= 50 ? .borderline : .onTrack)
-            expectedUsage = nil
-        }
-
-        // Build the display string
-        var displayParts: [String] = []
-
-        // Add status emoji if enabled
-        if showStatusEmoji {
-            displayParts.append(getStatusIcon(for: status))
-        }
-
-        // Add number display based on style
-        switch numberDisplayStyle {
-        case .none:
-            break
-        case .percentage:
-            displayParts.append("\(formatUtilization(utilization))%")
-        case .threshold:
-            let expectedStr = expectedUsage != nil ? formatUtilization(expectedUsage!) : "?"
-            displayParts.append("\(formatUtilization(utilization))|\(expectedStr)")
-        }
-
-        // Add progress icon based on style
-        switch progressIconStyle {
-        case .none:
-            break
-        case .circle:
-            displayParts.append(getCircleIcon(for: utilization))
-        case .braille:
-            displayParts.append(getBrailleIcon(for: utilization))
-        case .barAscii:
-            displayParts.append(getProgressBar(for: utilization, filled: "=", empty: " ", prefix: "[", suffix: "]"))
-        case .barBlocks:
-            displayParts.append(getProgressBar(for: utilization, filled: "▓", empty: "░", prefix: "", suffix: ""))
-        case .barSquares:
-            displayParts.append(getProgressBar(for: utilization, filled: "■", empty: "□", prefix: "", suffix: ""))
-        case .barCircles:
-            displayParts.append(getProgressBar(for: utilization, filled: "●", empty: "○", prefix: "", suffix: ""))
-        case .barLines:
-            displayParts.append(getProgressBar(for: utilization, filled: "━", empty: "─", prefix: "", suffix: ""))
-        }
-
-        // Fallback if nothing is selected
-        if displayParts.isEmpty {
-            displayParts.append("\(formatUtilization(utilization))%")
-        }
-
-        button.title = displayParts.joined(separator: " ")
-
-        // Update desktop widget
+    func updateWidget() {
         if widgetController.isVisible {
             widgetController.updateContent(with: currentWidgetData(), state: .ok)
         }
@@ -1617,54 +1422,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return .borderline
         } else {
             return .exceeding
-        }
-    }
-
-    func getStatusIcon(for status: UsageStatus) -> String {
-        switch status {
-        case .onTrack: return "✳️"
-        case .borderline: return "🚀"
-        case .exceeding: return "⚠️"
-        }
-    }
-
-    func getCircleIcon(for utilization: Double) -> String {
-        // ○ ◔ ◑ ◕ ●
-        if utilization < 12.5 { return "○" }
-        else if utilization < 37.5 { return "◔" }
-        else if utilization < 62.5 { return "◑" }
-        else if utilization < 87.5 { return "◕" }
-        else { return "●" }
-    }
-
-    func getBrailleIcon(for utilization: Double) -> String {
-        // ⠀ ⠁ ⠃ ⠇ ⡇ ⣇ ⣧ ⣿
-        if utilization < 12.5 { return "⠀" }
-        else if utilization < 25 { return "⠁" }
-        else if utilization < 37.5 { return "⠃" }
-        else if utilization < 50 { return "⠇" }
-        else if utilization < 62.5 { return "⡇" }
-        else if utilization < 75 { return "⣇" }
-        else if utilization < 87.5 { return "⣧" }
-        else { return "⣿" }
-    }
-
-    func getProgressBar(for utilization: Double, filled: String, empty: String, prefix: String, suffix: String) -> String {
-        let totalBlocks = 5
-        let filledBlocks = Int((utilization / 100.0) * Double(totalBlocks) + 0.5)
-        let emptyBlocks = totalBlocks - filledBlocks
-        let filledStr = String(repeating: filled, count: filledBlocks)
-        let emptyStr = String(repeating: empty, count: emptyBlocks)
-        return "\(prefix)\(filledStr)\(emptyStr)\(suffix)"
-    }
-
-    func getIconForUtilization(_ utilization: Double) -> String {
-        if utilization >= 80 {
-            return "⚠️"
-        } else if utilization >= 50 {
-            return "🚀"
-        } else {
-            return "✳️"
         }
     }
 

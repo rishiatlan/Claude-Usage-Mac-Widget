@@ -168,7 +168,7 @@ That's it. The widget appears on your desktop with live data.
 |-----------|--------|
 | **No browser access** | `setup.sh` never reads cookies, Keychain, or browser data — you paste the key yourself |
 | **Masked input** | Session key entry is hidden (`read -s`) and never echoed or logged |
-| **Local only** | Credentials saved to macOS UserDefaults on your machine — nothing leaves your computer |
+| **Keychain storage** | Session key stored in macOS Keychain (encrypted, `kSecAttrAccessibleWhenUnlocked`) — not in plain text |
 | **No telemetry** | Zero analytics, zero tracking. Only talks to `claude.ai/api` |
 | **Cloudflare-aware** | Detects Cloudflare challenge pages and handles them gracefully — won't falsely report session expiry |
 | **Smart polling** | Pauses API calls when session expires — resumes when you save fresh credentials |
@@ -295,7 +295,7 @@ Cookie: sessionKey={key}
 User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0
 ```
 
-**Architecture:** Single-file Swift app (`ClaudeUsageApp.swift`, ~1420 lines) — no Xcode project, no dependencies, no package manager. Compiles with `swiftc` directly.
+**Architecture:** Single-file Swift app (`ClaudeUsageApp.swift`, ~1490 lines) — no Xcode project, no dependencies, no package manager. Compiles with `swiftc` directly.
 
 **Key components:**
 - `FloatingWidgetPanel` — borderless `NSPanel` (always-on-top, all Spaces, draggable)
@@ -324,7 +324,7 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 
 ## Roadmap
 
-- [ ] Menu bar mode
+- [x] Keychain storage for session key — migrated from UserDefaults
 - [x] Launch at Login — enabled by default via `SMAppService`, toggleable in Settings
 - [x] In-app update notifications — blue dot indicator + one-click self-update via Settings
 - [ ] Optional usage history graph

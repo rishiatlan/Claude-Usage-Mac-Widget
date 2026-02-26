@@ -267,6 +267,7 @@ Claude-Usage-Mac-Widget/
 ├── run.sh                  - Run script with environment check
 ├── setup.sh                - Interactive credential setup (CLI)
 ├── generate-icon.sh        - App icon generator
+├── install.sh              - One-command installer (downloads release, installs to /Applications)
 ├── create-dmg.sh           - DMG packaging script
 ├── icon.svg                - Source icon
 ├── VERSION                 - Version string for update checking (bumped per material release)

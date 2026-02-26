@@ -74,47 +74,46 @@ No tab switching. No guesswork.
 
 ---
 
-## Quick Start (2 Minutes)
+## Quick Start (30 Seconds)
 
-### Requirements
+### One-Command Install
 
-- macOS 13+
-- Xcode Command Line Tools
-  ```bash
-  xcode-select --install
-  ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/rishiatlan/Claude-Usage-Mac-Widget/main/install.sh | bash
+```
 
-### 1. Clone & Build
+This downloads the pre-built app, installs it to `/Applications`, and launches it. No build tools needed.
+
+> **First launch:** Right-click the widget → **Settings** → paste your session key and org ID.
+
+### Setup Credentials
+
+1. Right-click the widget → **Settings**
+2. Paste your **Session Key** (from browser cookies — see [How to Get Your Credentials](#how-to-get-your-credentials))
+3. Paste your **Organization ID** (from DevTools Network tab)
+4. Click **Save**
+
+> **Session key expired?** Right-click → Settings → paste a fresh key. Org ID never expires.
+
+That's it. The widget appears on your desktop with live data.
+
+<details>
+<summary><strong>Alternative: Build from Source</strong></summary>
+
+<br>
+
+Requires macOS 13+ and Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/rishiatlan/Claude-Usage-Mac-Widget.git
 cd Claude-Usage-Mac-Widget
 chmod +x build.sh run.sh setup.sh generate-icon.sh
 ./build.sh
-```
-
-### 2. Setup Credentials
-
-```bash
-./setup.sh
-```
-
-The setup script will:
-
-1. Prompt for your **session key** (masked input — never shown on screen)
-2. **Automatically fetch** your Organization ID from the API
-3. **Validate** credentials with a test call and show current usage
-4. Save configuration and offer to launch the widget
-
-> **Session key expired?** Just run `./setup.sh` again. Your org ID is remembered — you only re-paste the session key.
-
-### 3. Launch
-
-```bash
+./setup.sh          # Interactive credential setup
 open build/ClaudeUsage.app
 ```
 
-That's it. The widget appears on your desktop with live data.
+</details>
 
 ---
 

@@ -90,6 +90,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 | `run.sh` | Kill existing + rebuild if needed + launch |
 | `setup.sh` | Interactive credential setup — guides paste, auto-fetches org ID, validates, detects Cloudflare |
 | `generate-icon.sh` | Programmatically draws app icon via inline Swift |
+| `install.sh` | One-command installer — downloads latest release, installs to /Applications, launches |
 | `create-dmg.sh` | Packages app into distributable DMG |
 | `README.md` | User-facing documentation and troubleshooting |
 | `DEVELOPMENT.md` | Developer guide — architecture, adding features, debugging |

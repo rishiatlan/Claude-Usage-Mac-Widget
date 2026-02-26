@@ -19,8 +19,8 @@ ClaudeUsageApp.swift
 ├── SettingsView (SwiftUI)         - Settings UI with SecureField + credential guidance
 ├── FloatingWidgetPanel (NSPanel)  - Borderless, always-on-top, all-Spaces widget
 ├── WidgetState (enum)             - ok, needsSetup, sessionExpired, loading
-├── WidgetView (SwiftUI)           - Four-state widget UI with context menu
-├── WidgetPanelController          - Widget lifecycle, position persistence
+├── WidgetView (SwiftUI)           - Four-state widget UI + compact/full mode, context menu
+├── WidgetPanelController          - Widget lifecycle, position persistence, compact toggle
 └── AppDelegate                    - Data fetching, timer, jitter/cooldown, credential management
 ```
 
@@ -28,7 +28,7 @@ ClaudeUsageApp.swift
 
 1. **Startup**: App launches → Reads preferences → Shows widget → Fetches usage data → Updates widget
 2. **Auto-refresh**: Timer triggers every 30 seconds → Fetches usage data → Updates widget (skipped if `isSessionExpired`)
-3. **User interaction**: Right-click context menu → Settings/Refresh/Quit
+3. **User interaction**: Right-click context menu → Compact/Full Size, Settings/Refresh/Quit; double-click toggles compact mode
 4. **Session expired**: API returns 401/403 with JSON body → `isSessionExpired = true` → Polling paused → Widget shows "Session Expired" (red border)
 5. **Cloudflare challenge**: API returns 403 with HTML body → Treated as transient error → Retry with exponential backoff (up to 3 times)
 6. **Credentials missing**: Widget shows "Setup Needed" → auto-opens Settings on first launch
@@ -261,7 +261,7 @@ print("Debug: expectedConsumption = \(expectedConsumption)")
 
 ```
 Claude-Usage-Mac-Widget/
-├── ClaudeUsageApp.swift    - Main application code (single file, ~1490 lines)
+├── ClaudeUsageApp.swift    - Main application code (single file, ~1610 lines)
 ├── Info.plist              - App bundle configuration (LSUIElement = true)
 ├── build.sh                - Build script
 ├── run.sh                  - Run script with environment check
@@ -276,6 +276,7 @@ Claude-Usage-Mac-Widget/
 ├── CLAUDE.md               - Claude Code guidance
 ├── assets/                 - Widget screenshots for README
 │   ├── widget-on-track.png - Widget screenshot (green state)
+│   ├── widget-compact.png - Widget screenshot (compact mode)
 │   ├── widget-still-usable.png - Widget screenshot (window full, still usable)
 │   └── widget-session-expired.png - Widget screenshot (session expired)
 └── build/                  - Build output directory
@@ -296,8 +297,8 @@ Claude-Usage-Mac-Widget/
 8. **FloatingWidgetPanel** — Borderless NSPanel subclass
 9. **WidgetState Enum** — ok, needsSetup, sessionExpired, loading
 10. **WidgetViewData** — Data container for widget display (includes multi-limit awareness fields)
-11. **WidgetView (SwiftUI)** — Four-state widget with context menu, status messages, other-limits display, blue update dot
-12. **WidgetPanelController** — Widget lifecycle, position/visibility persistence
+11. **WidgetView (SwiftUI)** — Four-state widget with compact/full mode, context menu, status messages, other-limits display, blue update dot
+12. **WidgetPanelController** — Widget lifecycle, position/visibility persistence, compact toggle with animated panel resize
 13. **AppDelegate** — App lifecycle, data fetching, 30s timer, 24h update checker, jitter/cooldown, credential management
 14. **Data Models** — UsageResponse, UsageLimit (Codable)
 15. **Main Entry Point** — NSApplication bootstrap
@@ -351,5 +352,6 @@ When making changes:
 6. Test that saving new credentials in Settings resumes polling after session expiry
 7. Test right-click context menu (Settings, Refresh, Quit)
 8. Test widget drag and position persistence
-9. Verify Cloudflare 403s are retried (not treated as session expiry) — check logs for "Cloudflare challenge detected"
-10. Update this documentation if adding features
+9. Test compact mode toggle (double-click and right-click menu) — verify frameless ring, hover background, and panel resize
+10. Verify Cloudflare 403s are retried (not treated as session expiry) — check logs for "Cloudflare challenge detected"
+11. Update this documentation if adding features

@@ -305,6 +305,7 @@ class Preferences {
     private let organizationIdKey = "claudeOrganizationId"
     private let metricTypeKey = "selectedMetricType"
     private let launchAtLoginConfiguredKey = "launchAtLoginConfigured"
+    private let compactModeKey = "widgetCompactMode"
 
     var sessionKey: String? {
         get {
@@ -353,6 +354,11 @@ class Preferences {
     var launchAtLoginConfigured: Bool {
         get { defaults.bool(forKey: launchAtLoginConfiguredKey) }
         set { defaults.set(newValue, forKey: launchAtLoginConfiguredKey) }
+    }
+
+    var compactMode: Bool {
+        get { defaults.bool(forKey: compactModeKey) }
+        set { defaults.set(newValue, forKey: compactModeKey) }
     }
 }
 
@@ -617,9 +623,13 @@ struct WidgetView: View {
     let data: WidgetViewData?
     let state: WidgetState
     var updateAvailable: Bool = false
+    var isCompact: Bool = false
     var onSettings: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onQuit: (() -> Void)? = nil
+    var onToggleCompact: (() -> Void)? = nil
+
+    @State private var isHovering: Bool = false
 
     var body: some View {
         Group {
@@ -630,7 +640,11 @@ struct WidgetView: View {
                 sessionExpiredView
             case .ok:
                 if let data = data {
-                    dataView(data)
+                    if isCompact {
+                        compactDataView(data)
+                    } else {
+                        dataView(data)
+                    }
                 } else {
                     loadingView
                 }
@@ -638,7 +652,15 @@ struct WidgetView: View {
                 loadingView
             }
         }
+        .onTapGesture(count: 2) { onToggleCompact?() }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
         .contextMenu {
+            Button(isCompact ? "Full Size" : "Compact") { onToggleCompact?() }
+            Divider()
             Button("Settings...") { onSettings?() }
             Button("Refresh") { onRefresh?() }
             Divider()
@@ -655,6 +677,44 @@ struct WidgetView: View {
             return .orange // "Caution" not "Blocked"
         }
         return statusColor(data.status)
+    }
+
+    func compactDataView(_ data: WidgetViewData) -> some View {
+        ZStack {
+            // Background appears on hover
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .opacity(isHovering ? 1 : 0)
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .opacity(isHovering ? 1 : 0)
+
+            ZStack {
+                Circle()
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 5)
+                Circle()
+                    .trim(from: 0, to: min(data.utilization / 100.0, 1.0))
+                    .stroke(ringColor(data), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.5), value: data.utilization)
+
+                Text("\(Int(data.utilization))%")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 56, height: 56)
+        }
+        .frame(width: 76, height: 76)
+        .overlay(alignment: .topTrailing) {
+            if updateAvailable {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 6, height: 6)
+                    .help("Update available — right-click → Settings to update")
+                    .padding(6)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     func dataView(_ data: WidgetViewData) -> some View {
@@ -873,10 +933,14 @@ class WidgetPanelController {
     var onSettings: (() -> Void)?
     var onRefresh: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onToggleCompact: (() -> Void)?
 
     var isVisible: Bool {
         panel?.isVisible ?? false
     }
+
+    private let compactSize = NSSize(width: 76, height: 76)
+    private let fullSize = NSSize(width: 140, height: 170)
 
     func show(with data: WidgetViewData?, state: WidgetState = .ok) {
         if panel == nil {
@@ -906,10 +970,26 @@ class WidgetPanelController {
             data: data,
             state: state,
             updateAvailable: UpdateChecker.shared.updateAvailable,
+            isCompact: Preferences.shared.compactMode,
             onSettings: onSettings,
             onRefresh: onRefresh,
-            onQuit: onQuit
+            onQuit: onQuit,
+            onToggleCompact: onToggleCompact
         )
+    }
+
+    func toggleCompact() {
+        let prefs = Preferences.shared
+        prefs.compactMode = !prefs.compactMode
+        let newSize = prefs.compactMode ? compactSize : fullSize
+        guard let panel = panel else { return }
+
+        // Resize around the top-left corner so the widget doesn't jump
+        var frame = panel.frame
+        let dy = newSize.height - frame.size.height
+        frame.origin.y -= dy
+        frame.size = newSize
+        panel.setFrame(frame, display: true, animate: true)
     }
 
     var shouldRestoreOnLaunch: Bool {
@@ -926,7 +1006,9 @@ class WidgetPanelController {
 
     private func createPanel() {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let defaultX = screen.maxX - 150
+        let isCompact = Preferences.shared.compactMode
+        let size = isCompact ? compactSize : fullSize
+        let defaultX = screen.maxX - size.width - 10
         let defaultY = screen.minY + 20
 
         let savedX = UserDefaults.standard.object(forKey: posXKey) as? CGFloat
@@ -934,16 +1016,18 @@ class WidgetPanelController {
         let x = savedX ?? defaultX
         let y = savedY ?? defaultY
 
-        let rect = NSRect(x: x, y: y, width: 140, height: 170)
+        let rect = NSRect(x: x, y: y, width: size.width, height: size.height)
         panel = FloatingWidgetPanel(contentRect: rect)
 
         let widgetView = WidgetView(
             data: nil,
             state: .loading,
             updateAvailable: UpdateChecker.shared.updateAvailable,
+            isCompact: isCompact,
             onSettings: onSettings,
             onRefresh: onRefresh,
-            onQuit: onQuit
+            onQuit: onQuit,
+            onToggleCompact: onToggleCompact
         )
         let hosting = NSHostingView(rootView: widgetView)
         hostingView = hosting
@@ -986,6 +1070,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         widgetController.onSettings = { [weak self] in self?.openSettings() }
         widgetController.onRefresh = { [weak self] in self?.fetchUsageData() }
         widgetController.onQuit = { NSApplication.shared.terminate(nil) }
+        widgetController.onToggleCompact = { [weak self] in
+            self?.widgetController.toggleCompact()
+            self?.updateWidget()
+        }
 
         NotificationCenter.default.addObserver(
             self,

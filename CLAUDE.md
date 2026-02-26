@@ -27,7 +27,7 @@ After editing `ClaudeUsageApp.swift`, always rebuild and relaunch — there is n
 
 ## Architecture
 
-Everything lives in `ClaudeUsageApp.swift` (~1490 lines). Key sections in order:
+Everything lives in `ClaudeUsageApp.swift` (~1610 lines). Key sections in order:
 
 1. **MetricType** — Enum defining available metrics (5-hour, 7-day, Sonnet) with display names and short labels
 2. **LoginItemManager** — `SMAppService`-based Launch at Login (macOS 13+ native API, no special permissions required)
@@ -37,8 +37,8 @@ Everything lives in `ClaudeUsageApp.swift` (~1490 lines). Key sections in order:
 6. **SettingsView** — SwiftUI view hosted in an `NSWindowController`, with credential hints inline and update banner. Session key uses `SecureField` (masked input)
 7. **FloatingWidgetPanel** — `NSPanel` subclass: borderless, floating, non-activating, all Spaces, draggable
 8. **WidgetState** — Enum: `.ok`, `.needsSetup`, `.sessionExpired`, `.loading`
-9. **WidgetView** — SwiftUI view with four states, circular progress ring, pace tracking, status messages, other-limits display, blue update dot, context menu (Settings/Refresh/Quit)
-10. **WidgetPanelController** — Manages panel lifecycle, saves/restores position via UserDefaults
+9. **WidgetView** — SwiftUI view with four states + compact/full mode, circular progress ring, pace tracking, status messages, other-limits display, blue update dot, context menu (Compact/Full Size, Settings/Refresh/Quit)
+10. **WidgetPanelController** — Manages panel lifecycle, saves/restores position via UserDefaults, compact toggle with animated panel resize
 11. **AppDelegate** — The core: 30-second fetch timer, 24-hour update check timer, HTTP requests, retry logic with jitter, Cloudflare cooldown, status calculation
 12. **Data Models** — `UsageResponse` and `UsageLimit` (Codable, maps to Claude API JSON)
 13. **Main Entry** — `@main` struct bootstraps `NSApplication` as `.accessory` (no dock icon)
@@ -55,6 +55,7 @@ Everything lives in `ClaudeUsageApp.swift` (~1490 lines). Key sections in order:
 - **Pace calculation**: `expectedUsage = (timeElapsed / windowDuration) * 100`, compared ±5% to determine on-track/borderline/exceeding
 - **Multi-limit awareness**: Other limits are always visible at all utilization levels (e.g., "7d: 34%  sonnet: 11%"). When the selected metric hits 100% but others have room, the widget shows "Still usable" with a green badge. "All limits reached" only appears when everything ≥90%.
 - **No-cache API requests**: `cachePolicy = .reloadIgnoringLocalCacheData` + `Cache-Control: no-cache` on every fetch — ensures limit changes from admin console are reflected immediately
+- **Compact mode**: Double-click or right-click → "Compact" toggles between full (140x170) and compact (76x76). Compact view is frameless — just the progress ring floating on desktop. `.ultraThinMaterial` background fades in on hover via `@State isHovering` + `.onHover`. State persisted in `Preferences.compactMode`. Panel resizes with animation anchored to top-left corner.
 - **Shell lockdown**: UpdateChecker uses `Process` API with explicit `executableURL` and `arguments` — no shell, no string interpolation. `runGitPull(in:)` and `runBuildScript(in:)` replace the old `runShell()` method.
 
 ## API
@@ -84,7 +85,7 @@ Returns JSON with optional fields: `five_hour`, `seven_day`, `seven_day_sonnet`,
 
 | File | Purpose |
 |------|---------|
-| `ClaudeUsageApp.swift` | Entire app source (~1490 lines) — edit this for all changes |
+| `ClaudeUsageApp.swift` | Entire app source (~1610 lines) — edit this for all changes |
 | `Info.plist` | Bundle config: `LSUIElement=true`, min macOS 13.0 |
 | `build.sh` | Build script (invokes `swiftc` + `generate-icon.sh`) |
 | `run.sh` | Kill existing + rebuild if needed + launch |

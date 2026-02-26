@@ -5,6 +5,8 @@ A lightweight macOS desktop widget that shows your Claude usage in real time —
 <p align="center">
   <img src="assets/widget-on-track.png" width="180" alt="Widget — on track" />
   &nbsp;&nbsp;&nbsp;
+  <img src="assets/widget-compact.png" width="80" alt="Widget — compact mode" />
+  &nbsp;&nbsp;&nbsp;
   <img src="assets/widget-still-usable.png" width="180" alt="Widget — still usable" />
   &nbsp;&nbsp;&nbsp;
   <img src="assets/widget-session-expired.png" width="180" alt="Widget — session expired" />
@@ -36,17 +38,22 @@ No tab switching. No guesswork.
 
 <table>
 <tr>
-<td width="33%">
+<td width="25%">
 
 <img src="assets/widget-on-track.png" width="160" alt="Widget showing on-track status" />
 
 </td>
-<td width="33%">
+<td width="25%">
+
+<img src="assets/widget-compact.png" width="80" alt="Widget in compact mode" />
+
+</td>
+<td width="25%">
 
 <img src="assets/widget-still-usable.png" width="160" alt="Widget showing still usable" />
 
 </td>
-<td width="33%">
+<td width="25%">
 
 <img src="assets/widget-session-expired.png" width="160" alt="Widget showing session expired" />
 
@@ -54,6 +61,7 @@ No tab switching. No guesswork.
 </tr>
 <tr>
 <td align="center"><em>On track — plenty of room</em></td>
+<td align="center"><em>Compact mode</em></td>
 <td align="center"><em>Window full — still usable</em></td>
 <td align="center"><em>Session expired — re-authenticate</em></td>
 </tr>
@@ -62,6 +70,7 @@ No tab switching. No guesswork.
 - **Live progress ring** with usage %
 - **Pace tracking** — actual vs expected usage
 - **Reset countdown** timer
+- **Compact mode** — double-click to shrink to a frameless ring; background appears on hover
 - **Always-on-top** floating panel (all Spaces)
 - **Draggable** — remembers position
 - **Auto-refresh** every 30 seconds
@@ -74,33 +83,28 @@ No tab switching. No guesswork.
 
 ---
 
-## Quick Start (30 Seconds)
+## Install
 
-### One-Command Install
+Three ways to get the widget — pick the one that fits:
+
+### Option 1: One-Command Install (Recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rishiatlan/Claude-Usage-Mac-Widget/main/install.sh | bash
 ```
 
-This downloads the pre-built app, installs it to `/Applications`, and launches it. No build tools needed.
+Downloads the pre-built app, installs to `/Applications`, removes Gatekeeper quarantine, and launches it. No build tools needed.
 
-> **First launch:** Right-click the widget → **Settings** → paste your session key and org ID.
+### Option 2: Download from GitHub Releases
 
-### Setup Credentials
+1. Go to [**Releases**](https://github.com/rishiatlan/Claude-Usage-Mac-Widget/releases/latest)
+2. Download `ClaudeUsage.app.zip`
+3. Unzip and move `ClaudeUsage.app` to `/Applications`
+4. Double-click to launch
 
-1. Right-click the widget → **Settings**
-2. Paste your **Session Key** (from browser cookies — see [How to Get Your Credentials](#how-to-get-your-credentials))
-3. Paste your **Organization ID** (from DevTools Network tab)
-4. Click **Save**
+> **Gatekeeper warning?** macOS may say the app is from an unidentified developer. Fix: `xattr -dr com.apple.quarantine /Applications/ClaudeUsage.app` or right-click → Open → Open.
 
-> **Session key expired?** Right-click → Settings → paste a fresh key. Org ID never expires.
-
-That's it. The widget appears on your desktop with live data.
-
-<details>
-<summary><strong>Alternative: Build from Source</strong></summary>
-
-<br>
+### Option 3: Build from Source
 
 Requires macOS 13+ and Xcode Command Line Tools (`xcode-select --install`).
 
@@ -113,7 +117,16 @@ chmod +x build.sh run.sh setup.sh generate-icon.sh
 open build/ClaudeUsage.app
 ```
 
-</details>
+### Setup Credentials
+
+1. Right-click the widget → **Settings**
+2. Paste your **Session Key** (from browser cookies — see [How to Get Your Credentials](#how-to-get-your-credentials))
+3. Paste your **Organization ID** (from DevTools Network tab)
+4. Click **Save**
+
+> **Session key expired?** Right-click → Settings → paste a fresh key. Org ID never expires.
+
+That's it. The widget appears on your desktop with live data.
 
 ---
 
@@ -125,6 +138,7 @@ open build/ClaudeUsage.app
 | Refresh | Right-click → **Refresh** |
 | Quit | Right-click → **Quit** |
 | Move widget | Click + drag |
+| Compact / Full Size | Double-click widget, or right-click → **Compact** / **Full Size** |
 | Change metric | Settings → **Display Metric** |
 
 ### Choosing a Metric
@@ -294,12 +308,12 @@ Cookie: sessionKey={key}
 User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.0
 ```
 
-**Architecture:** Single-file Swift app (`ClaudeUsageApp.swift`, ~1490 lines) — no Xcode project, no dependencies, no package manager. Compiles with `swiftc` directly.
+**Architecture:** Single-file Swift app (`ClaudeUsageApp.swift`, ~1610 lines) — no Xcode project, no dependencies, no package manager. Compiles with `swiftc` directly.
 
 **Key components:**
 - `FloatingWidgetPanel` — borderless `NSPanel` (always-on-top, all Spaces, draggable)
-- `WidgetView` — SwiftUI with 4 states: data, setup needed, session expired, loading
-- `WidgetPanelController` — manages lifecycle, persists position
+- `WidgetView` — SwiftUI with 4 states + compact/full mode, data, setup needed, session expired, loading
+- `WidgetPanelController` — manages lifecycle, persists position, handles compact toggle + panel resize
 - `AppDelegate` — fetching, 30s timer, retry logic, Cloudflare detection
 
 </details>
@@ -313,9 +327,11 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 | **"Setup Needed"** | Run `./setup.sh` or right-click → Settings → enter credentials |
 | **"Session Expired"** (red border) | Re-run `./setup.sh` with a fresh session key. Org ID is remembered. |
 | **Widget not visible** | App runs as background process. Check Activity Monitor → relaunch with `open build/ClaudeUsage.app` |
+| **Widget too big** | Double-click to switch to compact mode (just the ring). Double-click again to restore. |
 | **Data not loading** | Likely authentication — re-run `./setup.sh` |
 | **Stuck at same %** | That's accurate — 5-hour recovers gradually, 7-day resets weekly. Try switching metrics. |
 | **`setup.sh` says "Cloudflare blocked"** | Normal. Enter org ID manually when prompted. Widget app is unaffected. |
+| **Gatekeeper blocks the app** | Run `xattr -dr com.apple.quarantine /Applications/ClaudeUsage.app` or right-click → Open → Open |
 | **Build fails (SwiftBridging)** | `sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install` |
 | **Widget gone after restart** | Launch at Login is enabled by default. If you disabled it, re-enable via right-click → Settings |
 
@@ -326,6 +342,8 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 - [x] Keychain storage for session key — migrated from UserDefaults
 - [x] Launch at Login — enabled by default via `SMAppService`, toggleable in Settings
 - [x] In-app update notifications — blue dot indicator + one-click self-update via Settings
+- [x] Compact mode — frameless ring, double-click or right-click to toggle
+- [x] One-command installer + GitHub Releases distribution
 - [ ] Optional usage history graph
 - [ ] Signed / notarized build
 - [ ] Homebrew formula

@@ -364,7 +364,7 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ClaudeUsageWidget/1.
 
 ## Credits
 
-Built on top of [claude-usage](https://github.com/amoga-org/claude-usage) by **[amoga.io](https://amoga.io)**. Desktop widget adaptation by [@rishi-banerjee1](https://github.com/rishi-banerjee1).
+Built by [@rishi-banerjee1](https://github.com/rishi-banerjee1).
 
 ## License
 
